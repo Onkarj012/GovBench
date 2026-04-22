@@ -36,3 +36,17 @@ models:
     max_tokens: 512
     temperature: 0.0
 
+  gemma-4-31b:
+    name: Gemma 4 31B IT
+    provider: openrouter
+    model_id: google/gemma-4-31b-it:free
+    max_tokens: 512
+    temperature: 0.0
+
+  gpt-oss-120b:
+    name: GPT-OSS 120B
+    provider: openrouter
+    model_id: openai/gpt-oss-120b:free
+    max_tokens: 512
+    temperature: 0.0
+

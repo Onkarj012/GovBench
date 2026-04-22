@@ -17,6 +17,7 @@ from irbg.db.operations import (
     upsert_scenario,
     upsert_scenario_record,
 )
+from irbg.engine.prompt_builder import render_prompt
 from irbg.engine.provider import OpenRouterClient
 from irbg.engine.types import ChatMessage
 from irbg.engine.variant_generator import (
@@ -26,7 +27,7 @@ from irbg.engine.variant_generator import (
 from irbg.scenarios.discovery import load_template_files
 from irbg.scenarios.loader import load_scenario
 from irbg.scenarios.template_loader import load_scenario_template
-from irbg.scenarios.template_models import RenderedPrompt
+from irbg.scenarios.template_models import RenderedPrompt, ScenarioTemplate
 
 
 @dataclass(frozen=True)
@@ -266,9 +267,9 @@ def run_all_template_variants(
 ) -> RunBatchResult:
     model = get_model_config(model_alias)
     template = load_scenario_template(scenario_file)
-    rendered_prompts = generate_prompts_for_template(
-        template,
-        mode=mode if mode != "adversarial" else "baseline",
+    rendered_prompts = _build_rendered_prompts_for_template(
+        template=template,
+        mode=mode,
     )
 
     client = _build_client_from_env()
@@ -418,9 +419,9 @@ def run_template_folder(
                 difficulty=template.difficulty,
             )
 
-            rendered_prompts = generate_prompts_for_template(
-                template,
-                mode=mode if mode != "adversarial" else "baseline",
+            rendered_prompts = _build_rendered_prompts_for_template(
+                template=template,
+                mode=mode,
             )
 
             total_prompt_count += len(rendered_prompts)
@@ -473,6 +474,28 @@ def run_template_folder(
         client.close()
         conn.close()
 
+
+def _build_rendered_prompts_for_template(
+    *,
+    template: ScenarioTemplate,
+    mode: str,
+) -> list[RenderedPrompt]:
+    render_mode = mode if mode != "adversarial" else "baseline"
+
+    if template.variant_group:
+        return generate_prompts_for_template(
+            template,
+            mode=render_mode,
+        )
+    
+    return [
+        render_prompt(
+            template,
+            variables={},
+            mode=render_mode,
+            variant_id=None,
+        )
+    ]
 
 def _execute_rendered_prompt(
     *,
@@ -546,9 +569,7 @@ def _execute_adversarial_sequence(
             turn_number=1,
             system_prompt_sent=rendered.system_prompt,
             user_prompt_sent=rendered.user_prompt,
-            raw_response=first_response.text
-            if first_response.success
-            else None,
+            raw_response=first_response.text if first_response.success else None,
             response_tokens=first_response.total_tokens,
             latency_ms=first_response.latency_ms,
         )
@@ -557,7 +578,9 @@ def _execute_adversarial_sequence(
     if not first_response.success:
         return response_ids, False, first_response.error
 
-    messages.append(ChatMessage(role="assistant", content=first_response.text))
+    messages.append(
+        ChatMessage(role="assistant", content=first_response.text)
+    )
 
     turn_number = 2
     for turn in adversarial_turns:
@@ -589,7 +612,9 @@ def _execute_adversarial_sequence(
         if not response.success:
             return response_ids, False, response.error
 
-        messages.append(ChatMessage(role="assistant", content=response.text))
+        messages.append(
+            ChatMessage(role="assistant", content=response.text)
+        )
         turn_number += 1
 
     return response_ids, True, None

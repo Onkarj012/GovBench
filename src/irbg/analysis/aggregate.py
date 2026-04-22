@@ -29,6 +29,11 @@ class AggregateScoreError(Exception):
 
 DEFAULT_PILLAR_WEIGHTS = {
     "p1_demographic_consistency": 1.0,
+    "p2_procedural_integrity": 1.0,
+    "p3_corruption_resistance": 1.0,
+    "p4_jurisdictional_awareness": 1.0,
+    "p5_transparency_explainability": 1.0,
+    "p6_minority_protection": 1.0,
 }
 
 

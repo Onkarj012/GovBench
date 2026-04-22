@@ -49,6 +49,11 @@ from irbg.scenarios.template_loader import (
     load_scenario_template,
 )
 from irbg.scoring.p1 import P1ScoringError, score_p1_run
+from irbg.scoring.p2 import P2ScoringError, score_p2_run
+from irbg.scoring.p3 import P3ScoringError, score_p3_run
+from irbg.scoring.p4 import P4ScoringError, score_p4_run
+from irbg.scoring.p5 import P5ScoringError, score_p5_run
+from irbg.scoring.p6 import P6ScoringError, score_p6_run
 
 console = Console()
 
@@ -501,6 +506,306 @@ def score_p1_run_cmd(
             f"{item.total_score:.2f}",
             item.majority_decision,
             outliers,
+        )
+
+    console.print(detail)
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(asdict(result), indent=2))
+        console.print(f"Saved JSON score report to {output.resolve()}")
+
+
+@main.command("score-p2-run")
+@click.option("--run-id", required=True)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+)
+def score_p2_run_cmd(
+    run_id: str,
+    db_path: Path,
+    output: Path | None,
+) -> None:
+    _ensure_database(db_path)
+
+    try:
+        result = score_p2_run(
+            db_path=db_path,
+            run_id=run_id,
+        )
+    except P2ScoringError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    summary = Table(title="P2 Run Score (Procedural Integrity)")
+    summary.add_column("Field")
+    summary.add_column("Value")
+    summary.add_row("Run ID", result.run_id)
+    summary.add_row("Model", result.model_alias)
+    summary.add_row("Mode", result.mode)
+    summary.add_row("Scenario Count", str(result.scenario_count))
+    summary.add_row("Overall Score", f"{result.overall_score:.2f}")
+    console.print(summary)
+
+    detail = Table(title="Scenario Breakdown")
+    detail.add_column("Scenario ID")
+    detail.add_column("Category")
+    detail.add_column("Issue Detected")
+    detail.add_column("Score")
+
+    for item in result.scenarios:
+        detail.add_row(
+            item.scenario_id,
+            item.category,
+            "Yes" if item.issue_detected else "No",
+            f"{item.score:.2f}",
+        )
+
+    console.print(detail)
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(asdict(result), indent=2))
+        console.print(f"Saved JSON score report to {output.resolve()}")
+
+
+@main.command("score-p3-run")
+@click.option("--run-id", required=True)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+)
+def score_p3_run_cmd(
+    run_id: str,
+    db_path: Path,
+    output: Path | None,
+) -> None:
+    _ensure_database(db_path)
+
+    try:
+        result = score_p3_run(
+            db_path=db_path,
+            run_id=run_id,
+        )
+    except P3ScoringError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    summary = Table(title="P3 Run Score (Corruption Resistance)")
+    summary.add_column("Field")
+    summary.add_column("Value")
+    summary.add_row("Run ID", result.run_id)
+    summary.add_row("Model", result.model_alias)
+    summary.add_row("Mode", result.mode)
+    summary.add_row("Scenario Count", str(result.scenario_count))
+    summary.add_row("Overall Score", f"{result.overall_score:.2f}")
+    console.print(summary)
+
+    detail = Table(title="Scenario Breakdown")
+    detail.add_column("Scenario ID")
+    detail.add_column("Category")
+    detail.add_column("Resisted Pressure")
+    detail.add_column("Score")
+
+    for item in result.scenarios:
+        detail.add_row(
+            item.scenario_id,
+            item.category,
+            "Yes" if item.resisted_pressure else "No",
+            f"{item.score:.2f}",
+        )
+
+    console.print(detail)
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(asdict(result), indent=2))
+        console.print(f"Saved JSON score report to {output.resolve()}")
+
+
+@main.command("score-p4-run")
+@click.option("--run-id", required=True)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+)
+def score_p4_run_cmd(
+    run_id: str,
+    db_path: Path,
+    output: Path | None,
+) -> None:
+    _ensure_database(db_path)
+
+    try:
+        result = score_p4_run(
+            db_path=db_path,
+            run_id=run_id,
+        )
+    except P4ScoringError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    summary = Table(title="P4 Run Score (Jurisdictional Awareness)")
+    summary.add_column("Field")
+    summary.add_column("Value")
+    summary.add_row("Run ID", result.run_id)
+    summary.add_row("Model", result.model_alias)
+    summary.add_row("Mode", result.mode)
+    summary.add_row("Scenario Count", str(result.scenario_count))
+    summary.add_row("Overall Score", f"{result.overall_score:.2f}")
+    console.print(summary)
+
+    detail = Table(title="Scenario Breakdown")
+    detail.add_column("Scenario ID")
+    detail.add_column("Category")
+    detail.add_column("Jurisdiction Correct")
+    detail.add_column("Score")
+
+    for item in result.scenarios:
+        detail.add_row(
+            item.scenario_id,
+            item.category,
+            "Yes" if item.jurisdiction_correct else "No",
+            f"{item.score:.2f}",
+        )
+
+    console.print(detail)
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(asdict(result), indent=2))
+        console.print(f"Saved JSON score report to {output.resolve()}")
+
+
+@main.command("score-p5-run")
+@click.option("--run-id", required=True)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+)
+def score_p5_run_cmd(
+    run_id: str,
+    db_path: Path,
+    output: Path | None,
+) -> None:
+    _ensure_database(db_path)
+
+    try:
+        result = score_p5_run(
+            db_path=db_path,
+            run_id=run_id,
+        )
+    except P5ScoringError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    summary = Table(title="P5 Run Score (Transparency & Explainability)")
+    summary.add_column("Field")
+    summary.add_column("Value")
+    summary.add_row("Run ID", result.run_id)
+    summary.add_row("Model", result.model_alias)
+    summary.add_row("Mode", result.mode)
+    summary.add_row("Scenario Count", str(result.scenario_count))
+    summary.add_row("Overall Score", f"{result.overall_score:.2f}")
+    console.print(summary)
+
+    detail = Table(title="Scenario Breakdown")
+    detail.add_column("Scenario ID")
+    detail.add_column("Category")
+    detail.add_column("Transparency Score")
+    detail.add_column("Score")
+
+    for item in result.scenarios:
+        detail.add_row(
+            item.scenario_id,
+            item.category,
+            f"{item.transparency_score:.2f}",
+            f"{item.score:.2f}",
+        )
+
+    console.print(detail)
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(asdict(result), indent=2))
+        console.print(f"Saved JSON score report to {output.resolve()}")
+
+
+@main.command("score-p6-run")
+@click.option("--run-id", required=True)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--output",
+    type=click.Path(path_type=Path),
+    default=None,
+)
+def score_p6_run_cmd(
+    run_id: str,
+    db_path: Path,
+    output: Path | None,
+) -> None:
+    _ensure_database(db_path)
+
+    try:
+        result = score_p6_run(
+            db_path=db_path,
+            run_id=run_id,
+        )
+    except P6ScoringError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    summary = Table(title="P6 Run Score (Minority Protection)")
+    summary.add_column("Field")
+    summary.add_column("Value")
+    summary.add_row("Run ID", result.run_id)
+    summary.add_row("Model", result.model_alias)
+    summary.add_row("Mode", result.mode)
+    summary.add_row("Scenario Count", str(result.scenario_count))
+    summary.add_row("Overall Score", f"{result.overall_score:.2f}")
+    console.print(summary)
+
+    detail = Table(title="Scenario Breakdown")
+    detail.add_column("Scenario ID")
+    detail.add_column("Category")
+    detail.add_column("Protection Acknowledged")
+    detail.add_column("Score")
+
+    for item in result.scenarios:
+        detail.add_row(
+            item.scenario_id,
+            item.category,
+            "Yes" if item.protection_acknowledged else "No",
+            f"{item.score:.2f}",
         )
 
     console.print(detail)
