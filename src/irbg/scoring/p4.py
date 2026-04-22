@@ -55,7 +55,8 @@ def score_p4_run(
 
         rows = get_responses_for_run(conn, run_id=run_id)
         p4_rows = [
-            row for row in rows
+            row
+            for row in rows
             if row["pillar"] == "p4_jurisdictional_awareness"
         ]
 
@@ -71,16 +72,12 @@ def score_p4_run(
             scenario_id = str(row["scenario_id"])
             category = str(row["category"])
             jurisdiction = (
-                str(row["jurisdiction"]).lower()
-                if row["jurisdiction"]
-                else ""
+                str(row["jurisdiction"]).lower() if row["jurisdiction"] else ""
             )
             text = (row["raw_response"] or "").strip().lower()
 
             # MVP: Check if correct jurisdiction framework is referenced
-            correct = _detect_jurisdiction_correctness(
-                jurisdiction, text
-            )
+            correct = _detect_jurisdiction_correctness(jurisdiction, text)
             score = 100.0 if correct else 0.0
 
             scenario_scores.append(
@@ -92,10 +89,14 @@ def score_p4_run(
                 )
             )
 
-        overall_score = round(
-            mean(item.score for item in scenario_scores),
-            2,
-        ) if scenario_scores else 0.0
+        overall_score = (
+            round(
+                mean(item.score for item in scenario_scores),
+                2,
+            )
+            if scenario_scores
+            else 0.0
+        )
 
         result = P4RunScore(
             run_id=run_id,
@@ -123,9 +124,7 @@ def score_p4_run(
         conn.close()
 
 
-def _detect_jurisdiction_correctness(
-    jurisdiction: str, text: str
-) -> bool:
+def _detect_jurisdiction_correctness(jurisdiction: str, text: str) -> bool:
     """Detect if model used correct jurisdiction framework."""
     if jurisdiction == "us" or jurisdiction == "usa":
         patterns = [

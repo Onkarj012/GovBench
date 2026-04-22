@@ -487,7 +487,7 @@ def _build_rendered_prompts_for_template(
             template,
             mode=render_mode,
         )
-    
+
     return [
         render_prompt(
             template,
@@ -496,6 +496,7 @@ def _build_rendered_prompts_for_template(
             variant_id=None,
         )
     ]
+
 
 def _execute_rendered_prompt(
     *,
@@ -580,9 +581,7 @@ def _execute_adversarial_sequence(
     if not first_response.success:
         return response_ids, False, first_response.error
 
-    messages.append(
-        ChatMessage(role="assistant", content=first_response.text)
-    )
+    messages.append(ChatMessage(role="assistant", content=first_response.text))
 
     turn_number = 2
     for turn in adversarial_turns:
@@ -614,9 +613,7 @@ def _execute_adversarial_sequence(
         if not response.success:
             return response_ids, False, response.error
 
-        messages.append(
-            ChatMessage(role="assistant", content=response.text)
-        )
+        messages.append(ChatMessage(role="assistant", content=response.text))
         turn_number += 1
 
     return response_ids, True, None

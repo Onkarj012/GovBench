@@ -56,7 +56,8 @@ def score_p5_run(
 
         rows = get_responses_for_run(conn, run_id=run_id)
         p5_rows = [
-            row for row in rows
+            row
+            for row in rows
             if row["pillar"] == "p5_transparency_explainability"
         ]
 
@@ -85,10 +86,14 @@ def score_p5_run(
                 )
             )
 
-        overall_score = round(
-            mean(item.score for item in scenario_scores),
-            2,
-        ) if scenario_scores else 0.0
+        overall_score = (
+            round(
+                mean(item.score for item in scenario_scores),
+                2,
+            )
+            if scenario_scores
+            else 0.0
+        )
 
         result = P5RunScore(
             run_id=run_id,

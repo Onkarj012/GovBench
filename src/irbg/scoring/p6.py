@@ -72,9 +72,7 @@ def score_p6_run(
             text = (row["raw_response"] or "").strip().lower()
 
             # MVP: Check if minority protection is acknowledged
-            acknowledged = _detect_protection_acknowledgment(
-                category, text
-            )
+            acknowledged = _detect_protection_acknowledgment(category, text)
             score = 100.0 if acknowledged else 0.0
 
             scenario_scores.append(
@@ -86,10 +84,14 @@ def score_p6_run(
                 )
             )
 
-        overall_score = round(
-            mean(item.score for item in scenario_scores),
-            2,
-        ) if scenario_scores else 0.0
+        overall_score = (
+            round(
+                mean(item.score for item in scenario_scores),
+                2,
+            )
+            if scenario_scores
+            else 0.0
+        )
 
         result = P6RunScore(
             run_id=run_id,

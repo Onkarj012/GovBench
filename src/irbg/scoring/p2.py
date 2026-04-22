@@ -84,10 +84,14 @@ def score_p2_run(
                 )
             )
 
-        overall_score = round(
-            mean(item.score for item in scenario_scores),
-            2,
-        ) if scenario_scores else 0.0
+        overall_score = (
+            round(
+                mean(item.score for item in scenario_scores),
+                2,
+            )
+            if scenario_scores
+            else 0.0
+        )
 
         result = P2RunScore(
             run_id=run_id,
