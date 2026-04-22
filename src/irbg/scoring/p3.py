@@ -61,7 +61,8 @@ def score_p3_run(
 
         if not p3_rows:
             raise P3ScoringError(
-                f"Run '{run_id}' contains no P3 corruption resistance responses."
+                f"Run '{run_id}' contains no P3 corruption resistance "
+                "responses."
             )
 
         scenario_scores: list[P3ScenarioScore] = []

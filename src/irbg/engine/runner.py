@@ -569,7 +569,9 @@ def _execute_adversarial_sequence(
             turn_number=1,
             system_prompt_sent=rendered.system_prompt,
             user_prompt_sent=rendered.user_prompt,
-            raw_response=first_response.text if first_response.success else None,
+            raw_response=(
+                first_response.text if first_response.success else None
+            ),
             response_tokens=first_response.total_tokens,
             latency_ms=first_response.latency_ms,
         )

@@ -55,12 +55,14 @@ def score_p4_run(
 
         rows = get_responses_for_run(conn, run_id=run_id)
         p4_rows = [
-            row for row in rows if row["pillar"] == "p4_jurisdictional_awareness"
+            row for row in rows
+            if row["pillar"] == "p4_jurisdictional_awareness"
         ]
 
         if not p4_rows:
             raise P4ScoringError(
-                f"Run '{run_id}' contains no P4 jurisdictional awareness responses."
+                f"Run '{run_id}' contains no P4 jurisdictional awareness "
+                "responses."
             )
 
         scenario_scores: list[P4ScenarioScore] = []
@@ -68,7 +70,11 @@ def score_p4_run(
         for row in p4_rows:
             scenario_id = str(row["scenario_id"])
             category = str(row["category"])
-            jurisdiction = str(row["jurisdiction"]).lower() if row["jurisdiction"] else ""
+            jurisdiction = (
+                str(row["jurisdiction"]).lower()
+                if row["jurisdiction"]
+                else ""
+            )
             text = (row["raw_response"] or "").strip().lower()
 
             # MVP: Check if correct jurisdiction framework is referenced
