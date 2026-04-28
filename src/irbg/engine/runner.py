@@ -29,6 +29,27 @@ from irbg.scenarios.loader import load_scenario
 from irbg.scenarios.template_loader import load_scenario_template
 from irbg.scenarios.template_models import RenderedPrompt, ScenarioTemplate
 
+PILLAR_TOKEN_BUDGETS: dict[str, int] = {
+    "p1_demographic_consistency": 200,
+    "p2_procedural_integrity": 256,
+    "p3_corruption_resistance": 256,
+    "p4_jurisdictional_awareness": 256,
+    "p5_transparency_explainability": 384,
+    "p6_minority_protection": 384,
+}
+
+
+def _effective_max_tokens(
+    pillar: str | None,
+    model_max_tokens: int,
+) -> int:
+    if pillar is None:
+        return model_max_tokens
+    budget = PILLAR_TOKEN_BUDGETS.get(pillar)
+    if budget is None:
+        return model_max_tokens
+    return min(model_max_tokens, budget)
+
 
 @dataclass(frozen=True)
 class RunOnceResult:
@@ -110,6 +131,7 @@ def run_single_scenario(
             user_prompt=scenario.user_prompt,
             temperature=model.temperature,
             max_tokens=model.max_tokens,
+            top_p=model.top_p,
         )
 
         response_id = insert_response(
@@ -210,7 +232,10 @@ def run_single_template_variant(
                 rendered=rendered,
                 adversarial_turns=template.adversarial_turns,
                 temperature=model.temperature,
-                max_tokens=model.max_tokens,
+                max_tokens=_effective_max_tokens(
+                    rendered.pillar, model.max_tokens
+                ),
+                top_p=model.top_p,
             )
             response_id = response_ids[-1]
         else:
@@ -219,7 +244,10 @@ def run_single_template_variant(
                 system_prompt=rendered.system_prompt,
                 user_prompt=rendered.user_prompt,
                 temperature=model.temperature,
-                max_tokens=model.max_tokens,
+                max_tokens=_effective_max_tokens(
+                    rendered.pillar, model.max_tokens
+                ),
+                top_p=model.top_p,
             )
 
             response_id = insert_response(
@@ -325,7 +353,10 @@ def run_all_template_variants(
                     rendered=rendered,
                     adversarial_turns=template.adversarial_turns,
                     temperature=model.temperature,
-                    max_tokens=model.max_tokens,
+                    max_tokens=_effective_max_tokens(
+                        rendered.pillar, model.max_tokens
+                    ),
+                    top_p=model.top_p,
                 )
             else:
                 provider_response = _execute_rendered_prompt(
@@ -335,7 +366,10 @@ def run_all_template_variants(
                     model_id=model.model_id,
                     rendered=rendered,
                     temperature=model.temperature,
-                    max_tokens=model.max_tokens,
+                    max_tokens=_effective_max_tokens(
+                        rendered.pillar, model.max_tokens
+                    ),
+                    top_p=model.top_p,
                 )
                 success = provider_response.success
 
@@ -436,7 +470,10 @@ def run_template_folder(
                         rendered=rendered,
                         adversarial_turns=template.adversarial_turns,
                         temperature=model.temperature,
-                        max_tokens=model.max_tokens,
+                        max_tokens=_effective_max_tokens(
+                            rendered.pillar, model.max_tokens
+                        ),
+                        top_p=model.top_p,
                     )
                 else:
                     provider_response = _execute_rendered_prompt(
@@ -446,7 +483,10 @@ def run_template_folder(
                         model_id=model.model_id,
                         rendered=rendered,
                         temperature=model.temperature,
-                        max_tokens=model.max_tokens,
+                        max_tokens=_effective_max_tokens(
+                            rendered.pillar, model.max_tokens
+                        ),
+                        top_p=model.top_p,
                     )
                     success = provider_response.success
 
@@ -507,6 +547,7 @@ def _execute_rendered_prompt(
     rendered: RenderedPrompt,
     temperature: float,
     max_tokens: int,
+    top_p: float,
 ):
     provider_response = client.chat(
         model_id=model_id,
@@ -514,6 +555,7 @@ def _execute_rendered_prompt(
         user_prompt=rendered.user_prompt,
         temperature=temperature,
         max_tokens=max_tokens,
+        top_p=top_p,
     )
 
     insert_response(
@@ -545,6 +587,7 @@ def _execute_adversarial_sequence(
     adversarial_turns,
     temperature: float,
     max_tokens: int,
+    top_p: float,
 ) -> tuple[list[str], bool, str | None]:
     messages = [
         ChatMessage(role="system", content=rendered.system_prompt),
@@ -558,6 +601,7 @@ def _execute_adversarial_sequence(
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
+        top_p=top_p,
     )
 
     response_ids.append(
@@ -592,6 +636,7 @@ def _execute_adversarial_sequence(
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            top_p=top_p,
         )
 
         response_ids.append(

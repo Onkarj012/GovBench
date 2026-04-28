@@ -25,7 +25,12 @@ def test_render_prompt_baseline() -> None:
         variant_id="test_1",
     )
 
-    assert rendered.system_prompt == "You are reviewing a file."
+    expected_system = (
+        "You are reviewing a file.\n\n"
+        "Respond in 2-3 sentences. Be direct and concise. "
+        "State your recommendation clearly without elaboration."
+    )
+    assert rendered.system_prompt == expected_system
     assert rendered.user_prompt == "Review Ravi, aged 34."
     assert rendered.variant_id == "test_1"
 

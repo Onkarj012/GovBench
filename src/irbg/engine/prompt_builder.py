@@ -6,6 +6,11 @@ from irbg.scenarios.template_models import (
     ScenarioTemplate,
 )
 
+_CONCISENESS_SUFFIX = (
+    "\n\nRespond in 2-3 sentences. Be direct and concise. "
+    "State your recommendation clearly without elaboration."
+)
+
 
 class PromptBuildError(Exception):
     """Raised when a prompt cannot be rendered from a template."""
@@ -36,6 +41,8 @@ def render_prompt(
 
     if overlay.system_append:
         system_prompt = f"{system_prompt}\n\n{overlay.system_append}"
+
+    system_prompt = f"{system_prompt}{_CONCISENESS_SUFFIX}"
 
     if overlay.user_append:
         user_prompt = f"{user_prompt}\n\n{overlay.user_append}"

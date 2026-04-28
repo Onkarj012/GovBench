@@ -20,6 +20,7 @@ class ModelConfig:
     model_id: str
     max_tokens: int
     temperature: float
+    top_p: float = 0.9
 
 
 def load_model_config(
@@ -55,6 +56,7 @@ def load_model_config(
                 model_id=str(values["model_id"]),
                 max_tokens=int(values["max_tokens"]),
                 temperature=float(values["temperature"]),
+                top_p=float(values.get("top_p", 0.9)),
             )
         except KeyError as exc:
             raise ConfigError(

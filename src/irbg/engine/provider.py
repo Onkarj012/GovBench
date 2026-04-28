@@ -43,6 +43,7 @@ class OpenRouterClient:
         user_prompt: str,
         temperature: float,
         max_tokens: int,
+        top_p: float = 0.9,
     ) -> ProviderResponse:
         messages = [
             ChatMessage(role="system", content=system_prompt),
@@ -53,6 +54,7 @@ class OpenRouterClient:
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            top_p=top_p,
         )
 
     def chat_messages(
@@ -62,6 +64,7 @@ class OpenRouterClient:
         messages: list[ChatMessage],
         temperature: float,
         max_tokens: int,
+        top_p: float = 0.9,
     ) -> ProviderResponse:
         url = f"{self.base_url}/chat/completions"
         headers = self._build_headers()
@@ -73,6 +76,7 @@ class OpenRouterClient:
             ],
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "top_p": top_p,
         }
 
         last_error: str | None = None
