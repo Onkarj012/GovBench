@@ -1,0 +1,13 @@
+{
+  "run_id": "57aa90bb3e364a1aa1a1c7d5be01f771",
+  "model_alias": "deepseek-v3",
+  "mode": "baseline",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 18990.67,
+  "average_tokens": 571.33,
+  "pillar_scores": {},
+  "composite_score": null,
+  "grade": null
+}
