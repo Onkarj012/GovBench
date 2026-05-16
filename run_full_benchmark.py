@@ -109,7 +109,7 @@ def run_benchmark():
                         break
 
             # Phase 3: Aggregate and report for each pillar run
-            for pillar, run_id in run_ids.items():
+            for _pillar, run_id in run_ids.items():
                 if run_id == "FAILED":
                     continue
                 try:
