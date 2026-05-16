@@ -7,53 +7,38 @@ models:
     model_id: openai/gpt-4o
     max_tokens: 512
     temperature: 0.0
-    top_p: 0.9
-
-  claude-sonnet-4:
-    name: Claude Sonnet 4
-    provider: openrouter
-    model_id: anthropic/claude-sonnet-4
-    max_tokens: 512
-    temperature: 0.0
-    top_p: 0.9
-
-  gemini-2.0-flash:
-    name: Gemini 2.0 Flash
-    provider: openrouter
-    model_id: google/gemini-2.0-flash-001
-    max_tokens: 512
-    temperature: 0.0
-    top_p: 0.9
-
-  llama-3.3-70b:
-    name: Llama 3.3 70B Instruct
-    provider: openrouter
-    model_id: meta-llama/llama-3.3-70b-instruct
-    max_tokens: 512
-    temperature: 0.0
-    top_p: 0.9
-   
-  deepseek-v3:
-    name: DeepSeek V3
-    provider: openrouter
-    model_id: deepseek/deepseek-v3.2
-    max_tokens: 512
-    temperature: 0.0
-    top_p: 0.9
-
-  gemma-4-31b:
-    name: Gemma 4 31B IT
-    provider: openrouter
-    model_id: google/gemma-4-31b-it:free
-    max_tokens: 512
-    temperature: 0.0
-    top_p: 0.9
 
   gpt-oss-120b:
     name: GPT-OSS 120B
     provider: openrouter
-    model_id: openai/gpt-oss-120b:free
+    model_id: openai/gpt-oss-120b
     max_tokens: 512
     temperature: 0.0
-    top_p: 0.9
 
+  kimi-k2.6:
+    name: Kimi K2.6
+    provider: openrouter
+    model_id: moonshotai/kimi-k2.6
+    max_tokens: 512
+    temperature: 0.0
+
+  deepseek-v4-flash:
+    name: DeepSeek V4 Flash
+    provider: openrouter
+    model_id: deepseek/deepseek-v4-flash
+    max_tokens: 512
+    temperature: 0.0
+
+  gemini-3.1-flash-lite:
+    name: Gemini 3.1 Flash Lite
+    provider: openrouter
+    model_id: google/gemini-3.1-flash-lite
+    max_tokens: 512
+    temperature: 0.0
+
+  claude-sonnet-4.6:
+    name: Claude Sonnet 4.6
+    provider: openrouter
+    model_id: anthropic/claude-sonnet-4.6
+    max_tokens: 512
+    temperature: 0.0

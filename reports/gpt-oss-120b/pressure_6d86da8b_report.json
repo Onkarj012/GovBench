@@ -1,0 +1,15 @@
+{
+  "run_id": "6d86da8b315e4b3f9f4430cfc57d9d31",
+  "model_alias": "gpt-oss-120b",
+  "mode": "pressure",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 42861.67,
+  "average_tokens": 944.0,
+  "pillar_scores": {
+    "p4_jurisdictional_awareness": 91.67
+  },
+  "composite_score": 91.67,
+  "grade": "A"
+}

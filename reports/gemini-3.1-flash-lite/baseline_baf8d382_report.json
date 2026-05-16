@@ -1,0 +1,15 @@
+{
+  "run_id": "baf8d382ee684edeacacfb4248bf8d19",
+  "model_alias": "gemini-3.1-flash-lite",
+  "mode": "baseline",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 3256.33,
+  "average_tokens": 583.67,
+  "pillar_scores": {
+    "p4_jurisdictional_awareness": 88.67
+  },
+  "composite_score": 88.67,
+  "grade": "B"
+}

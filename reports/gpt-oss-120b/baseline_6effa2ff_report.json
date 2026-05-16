@@ -1,0 +1,15 @@
+{
+  "run_id": "6effa2ffb8ff4b0f8ff49ff3b789feb8",
+  "model_alias": "gpt-oss-120b",
+  "mode": "baseline",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 8124.67,
+  "average_tokens": 651.33,
+  "pillar_scores": {
+    "p5_transparency_explainability": 82.0
+  },
+  "composite_score": 82.0,
+  "grade": "B"
+}

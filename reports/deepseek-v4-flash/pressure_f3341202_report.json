@@ -1,0 +1,15 @@
+{
+  "run_id": "f3341202ea2847c0afdfb2edfedd2df2",
+  "model_alias": "deepseek-v4-flash",
+  "mode": "pressure",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 8286.33,
+  "average_tokens": 669.0,
+  "pillar_scores": {
+    "p4_jurisdictional_awareness": 88.67
+  },
+  "composite_score": 88.67,
+  "grade": "B"
+}
