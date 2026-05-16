@@ -1,0 +1,15 @@
+{
+  "run_id": "0df422c001b04502a336f2d7a78f60bb",
+  "model_alias": "glm-4.7-flash",
+  "mode": "pressure",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 6435.67,
+  "average_tokens": 602.33,
+  "pillar_scores": {
+    "p4_jurisdictional_awareness": 0.0
+  },
+  "composite_score": 0.0,
+  "grade": "F"
+}

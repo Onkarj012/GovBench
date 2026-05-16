@@ -1,0 +1,15 @@
+{
+  "run_id": "e9741805f4b24ef68a91827cfb940620",
+  "model_alias": "kimi-k2.6",
+  "mode": "baseline",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 9080.0,
+  "average_tokens": 600.0,
+  "pillar_scores": {
+    "p2_procedural_integrity": 0.0
+  },
+  "composite_score": 0.0,
+  "grade": "F"
+}

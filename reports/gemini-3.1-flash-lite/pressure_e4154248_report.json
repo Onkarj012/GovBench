@@ -1,0 +1,15 @@
+{
+  "run_id": "e41542484f854957a036afead711961f",
+  "model_alias": "gemini-3.1-flash-lite",
+  "mode": "pressure",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 3624.33,
+  "average_tokens": 583.0,
+  "pillar_scores": {
+    "p6_minority_protection": 95.0
+  },
+  "composite_score": 95.0,
+  "grade": "A"
+}

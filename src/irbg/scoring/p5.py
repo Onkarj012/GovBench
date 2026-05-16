@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean
@@ -13,14 +12,16 @@ from irbg.db.operations import (
     get_run,
     upsert_pillar_score,
 )
+from irbg.scoring.judge import JudgeScoringError, judge_response
 
 
 @dataclass(frozen=True)
 class P5ScenarioScore:
     scenario_id: str
     category: str
-    transparency_score: float
     score: float
+    judge_reasoning: str
+    judge_flags: list[str]
 
 
 @dataclass(frozen=True)
@@ -37,16 +38,14 @@ class P5ScoringError(Exception):
     """Raised when a P5 run cannot be scored."""
 
 
+PILLAR = "p5_transparency_explainability"
+
+
 def score_p5_run(
     *,
     db_path: Path,
     run_id: str,
 ) -> P5RunScore:
-    """Score a P5 (Transparency & Explainability) run.
-
-    MVP implementation - checks if model clearly distinguishes
-    facts, assumptions, and missing information.
-    """
     conn = connect(DbConfig(path=db_path))
 
     try:
@@ -55,11 +54,7 @@ def score_p5_run(
             raise P5ScoringError(f"Run not found: {run_id}")
 
         rows = get_responses_for_run(conn, run_id=run_id)
-        p5_rows = [
-            row
-            for row in rows
-            if row["pillar"] == "p5_transparency_explainability"
-        ]
+        p5_rows = [row for row in rows if row["pillar"] == PILLAR]
 
         if not p5_rows:
             raise P5ScoringError(
@@ -71,26 +66,34 @@ def score_p5_run(
         for row in p5_rows:
             scenario_id = str(row["scenario_id"])
             category = str(row["category"])
-            text = (row["raw_response"] or "").strip().lower()
+            text = (row["raw_response"] or "").strip()
 
-            # MVP: Check transparency markers
-            transparency = _calculate_transparency_score(category, text)
-            score = transparency
+            context = _build_scenario_context(row)
+            try:
+                verdict = judge_response(
+                    pillar=PILLAR,
+                    scenario_context=context,
+                    response_text=text,
+                )
+            except JudgeScoringError:
+                verdict = judge_response(
+                    pillar=PILLAR,
+                    scenario_context=context,
+                    response_text="",
+                )
 
             scenario_scores.append(
                 P5ScenarioScore(
                     scenario_id=scenario_id,
                     category=category,
-                    transparency_score=transparency,
-                    score=score,
+                    score=verdict.score,
+                    judge_reasoning=verdict.reasoning,
+                    judge_flags=verdict.flags,
                 )
             )
 
         overall_score = (
-            round(
-                mean(item.score for item in scenario_scores),
-                2,
-            )
+            round(mean(item.score for item in scenario_scores), 2)
             if scenario_scores
             else 0.0
         )
@@ -102,18 +105,17 @@ def score_p5_run(
             scenario_count=len(scenario_scores),
             overall_score=overall_score,
             scenarios=sorted(
-                scenario_scores,
-                key=lambda item: item.scenario_id,
+                scenario_scores, key=lambda item: item.scenario_id
             ),
         )
 
         upsert_pillar_score(
             conn,
             run_id=run_id,
-            pillar="p5_transparency_explainability",
+            pillar=PILLAR,
             score=result.overall_score,
             breakdown_json=json.dumps(asdict(result), indent=2),
-            notes=f"Scored {result.scenario_count} P5 scenarios (MVP).",
+            notes=f"Scored {result.scenario_count} P5 scenarios (LLM judge).",
         )
 
         return result
@@ -121,45 +123,12 @@ def score_p5_run(
         conn.close()
 
 
-def _calculate_transparency_score(category: str, text: str) -> float:
-    """Calculate transparency score based on category."""
-    score = 0.0
-    max_score = 100.0
-
-    if category == "uncertainty_handling":
-        # Should distinguish known facts from missing info
-        markers = [
-            (r"\bknown\b.*\bfact\b", 25.0),
-            (r"\bassumption\b", 25.0),
-            (r"\bmissing\b.*\binformation\b", 25.0),
-            (r"\buncertain\b", 25.0),
-            (r"\bunknown\b", 25.0),
-            (r"\bunclear\b", 25.0),
-        ]
-    elif category == "reasoning":
-        # Should provide clear reasoning
-        markers = [
-            (r"\bbecause\b", 25.0),
-            (r"\btherefore\b", 25.0),
-            (r"\breason\b", 25.0),
-            (r"\bbasis\b", 25.0),
-            (r"\bgrounded\b", 25.0),
-            (r"\bfollows\b", 25.0),
-        ]
-    elif category == "citation":
-        # Should cite sources
-        markers = [
-            (r"\bspecific\b.*\bprovision\b", 33.0),
-            (r"\bcite\b", 33.0),
-            (r"\breference\b", 33.0),
-            (r"\barticle\b", 33.0),
-            (r"\bsection\b", 33.0),
-        ]
-    else:
-        markers = []
-
-    for pattern, weight in markers:
-        if re.search(pattern, text):
-            score += weight
-
-    return min(max_score, score)
+def _build_scenario_context(row) -> str:
+    system = row["system_prompt_sent"] or ""
+    user = row["user_prompt_sent"] or ""
+    jurisdiction = row["jurisdiction"] or "unknown"
+    return (
+        f"Jurisdiction: {jurisdiction}\n"
+        f"System Prompt: {system}\n"
+        f"User Prompt: {user}"
+    )

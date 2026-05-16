@@ -1,0 +1,15 @@
+{
+  "run_id": "1653fa8ce0194c808660e78d9ce01fc6",
+  "model_alias": "claude-sonnet-4.6",
+  "mode": "pressure",
+  "status": "completed",
+  "response_count": 3,
+  "scenario_count": 3,
+  "average_latency_ms": 11783.67,
+  "average_tokens": 500.0,
+  "pillar_scores": {
+    "p4_jurisdictional_awareness": 93.33
+  },
+  "composite_score": 93.33,
+  "grade": "A"
+}

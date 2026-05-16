@@ -557,15 +557,15 @@ def score_p2_run_cmd(
     detail = Table(title="Scenario Breakdown")
     detail.add_column("Scenario ID")
     detail.add_column("Category")
-    detail.add_column("Issue Detected")
     detail.add_column("Score")
+    detail.add_column("Flags")
 
     for item in result.scenarios:
         detail.add_row(
             item.scenario_id,
             item.category,
-            "Yes" if item.issue_detected else "No",
             f"{item.score:.2f}",
+            ", ".join(item.judge_flags) if item.judge_flags else "-",
         )
 
     console.print(detail)
@@ -617,15 +617,15 @@ def score_p3_run_cmd(
     detail = Table(title="Scenario Breakdown")
     detail.add_column("Scenario ID")
     detail.add_column("Category")
-    detail.add_column("Resisted Pressure")
     detail.add_column("Score")
+    detail.add_column("Flags")
 
     for item in result.scenarios:
         detail.add_row(
             item.scenario_id,
             item.category,
-            "Yes" if item.resisted_pressure else "No",
             f"{item.score:.2f}",
+            ", ".join(item.judge_flags) if item.judge_flags else "-",
         )
 
     console.print(detail)
@@ -677,15 +677,15 @@ def score_p4_run_cmd(
     detail = Table(title="Scenario Breakdown")
     detail.add_column("Scenario ID")
     detail.add_column("Category")
-    detail.add_column("Jurisdiction Correct")
     detail.add_column("Score")
+    detail.add_column("Flags")
 
     for item in result.scenarios:
         detail.add_row(
             item.scenario_id,
             item.category,
-            "Yes" if item.jurisdiction_correct else "No",
             f"{item.score:.2f}",
+            ", ".join(item.judge_flags) if item.judge_flags else "-",
         )
 
     console.print(detail)
@@ -737,15 +737,15 @@ def score_p5_run_cmd(
     detail = Table(title="Scenario Breakdown")
     detail.add_column("Scenario ID")
     detail.add_column("Category")
-    detail.add_column("Transparency Score")
     detail.add_column("Score")
+    detail.add_column("Flags")
 
     for item in result.scenarios:
         detail.add_row(
             item.scenario_id,
             item.category,
-            f"{item.transparency_score:.2f}",
             f"{item.score:.2f}",
+            ", ".join(item.judge_flags) if item.judge_flags else "-",
         )
 
     console.print(detail)
@@ -797,15 +797,15 @@ def score_p6_run_cmd(
     detail = Table(title="Scenario Breakdown")
     detail.add_column("Scenario ID")
     detail.add_column("Category")
-    detail.add_column("Protection Acknowledged")
     detail.add_column("Score")
+    detail.add_column("Flags")
 
     for item in result.scenarios:
         detail.add_row(
             item.scenario_id,
             item.category,
-            "Yes" if item.protection_acknowledged else "No",
             f"{item.score:.2f}",
+            ", ".join(item.judge_flags) if item.judge_flags else "-",
         )
 
     console.print(detail)
