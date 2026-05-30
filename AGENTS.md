@@ -1,88 +1,68 @@
-# GovBench Agents Documentation
+# GovBench — Agent Instructions
 
-This file contains agent-specific instructions and context for AI assistants working on the GovBench (Institutional Readiness & Bias Benchmark for Governance) project.
+Context and instructions for AI assistants working on this project.
 
-## Project Overview
+## What is GovBench
 
-GovBench is a benchmarking framework that evaluates AI language models for demographic bias and governance readiness across 6 pillars:
-- P1: Demographic Consistency
-- P2: Procedural Integrity
-- P3: Corruption Resistance
-- P4: Jurisdictional Awareness
-- P5: Transparency & Explainability
-- P6: Minority Protection
+GovBench (Governance Benchmark) evaluates AI language models for institutional readiness and demographic bias across 6 governance pillars. It runs structured scenario prompts through models via OpenRouter, scores responses with a GPT-4o judge, and produces per-run reports.
 
-## Key Technical Details
+**Pillars:**
+- P1: Demographic Consistency — same case, different demographic identifiers
+- P2: Procedural Integrity — scenarios with embedded procedural violations
+- P3: Corruption Resistance — adversarial multi-turn pressure to change recommendations
+- P4: Jurisdictional Awareness — cross-border / multi-jurisdiction cases
+- P5: Transparency & Explainability — cases with missing info requiring explicit uncertainty
+- P6: Minority Protection — cases involving protected characteristics
 
-### Architecture
-- **Language**: Python 3.12+
-- **Package Manager**: `uv`
-- **Build System**: Hatchling
-- **CLI Framework**: Click
-- **Database**: SQLite
-- **LLM Provider**: OpenRouter API
+**Run modes:** `baseline` · `pressure` (urgency framing) · `adversarial` (P3 only, multi-turn)
 
-### Project Structure
+**Jurisdictions:** US · EU · India
+
+## Project Layout
+
 ```
-irbg/
-├── src/irbg/              # Main package
-│   ├── cli.py             # CLI commands
-│   ├── engine/            # Provider, runner, prompts
-│   ├── scenarios/         # Scenario loading & templates
-│   ├── scoring/           # P1-P6 scoring modules
-│   ├── analysis/          # Aggregate, compare, reporting
-│   └── db/                # Database operations
-├── scenarios/             # JSON scenario templates
+govbench/
+├── src/irbg/              # Python package (entrypoint: irbg CLI)
+│   ├── cli.py             # All Click commands
+│   ├── engine/            # provider.py, runner.py, prompt_builder.py, variant_generator.py
+│   ├── scenarios/         # template_loader.py, loader.py, models.py, discovery.py
+│   ├── scoring/           # p1.py – p6.py, judge.py
+│   ├── analysis/          # aggregate.py, compare.py, reporting.py, visualize.py
+│   └── db/                # schema.py, operations.py
+├── scenarios/             # JSON scenario templates (p1_demographic/ … p6_minority/)
 ├── config/                # models.yaml, demographics.yaml
-└── tests/                 # pytest test suite
+├── reports/               # Per-model run outputs (<model-alias>/<mode>_<id>_report.*)
+├── outputs/graphify/      # Graphify dependency graph output
+├── scripts/               # run_full_benchmark.py
+├── frontend/              # Next.js (App Router) site — GovBench leaderboard & docs
+├── tests/                 # pytest suite
+├── pyproject.toml         # package: govbench, entrypoint: irbg
+└── main.py                # thin wrapper
 ```
 
-### Code Style
-- **Linter/Formatter**: Ruff (line length: 80)
-- **Import Style**: Absolute imports preferred
-- **Type Hints**: Use for public functions
-- **Dataclasses**: Use `@dataclass(frozen=True)` for data structures
-- **Error Handling**: Custom exception per module
+## Stack
 
-### Testing
-```bash
-# Run all checks
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest tests/ -v
-```
+| Layer | Choice |
+|---|---|
+| Language | Python 3.12+ |
+| Package manager | `uv` |
+| Build | Hatchling |
+| CLI | Click |
+| Database | SQLite (`irbg.sqlite`) |
+| LLM provider | OpenRouter API |
+| Judge model | `gpt-4o` (configured in `config/models.yaml`) |
+| Frontend | Next.js 16 + Tailwind CSS v4 + TypeScript |
 
-### CLI Usage Patterns
-```bash
-# Run benchmarks
-irbg run-template-folder --model <alias> --scenario-folder <path>
+## Code Conventions
 
-# Score runs
-irbg score-p1-run --run-id <id>
-irbg score-p2-run --run-id <id>
-# ... etc for P3-P6
+- **Linter/formatter:** Ruff, line length 80, target Python 3.12
+- **Imports:** absolute preferred
+- **Types:** type hints on all public functions
+- **Data structures:** `@dataclass(frozen=True)`
+- **Errors:** one custom exception class per module
 
-# Aggregate and report
-irbg aggregate-run --run-id <id>
-irbg report-run --run-id <id>
-```
+## Environment
 
-## Current Focus Areas
-
-### Token Efficiency (Active Branch: feat/token-efficiency)
-- Add token budget constraints per pillar
-- Implement conciseness scoring metric
-- Optimize model response lengths
-- Reduce API costs while maintaining accuracy
-
-### Known Issues
-- GPT-OSS 120B generates 3x more tokens than DeepSeek-V3
-- P6 (Minority Protection) has highest token variance
-- P5 (Transparency) scoring needs improvement
-
-## Environment Setup
-
-Required environment variables in `.env`:
 ```bash
 OPENROUTER_API_KEY=your_key_here
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
@@ -90,15 +70,34 @@ OPENROUTER_APP_NAME=GovBench
 OPENROUTER_SITE_URL=https://your-site.com
 ```
 
-## Contributing Guidelines
+## Common Commands
 
-1. Follow conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `style:`, `test:`
-2. All code must pass ruff checks and tests before committing
-3. Update this file if you change architectural patterns
-4. See CLAUDE.md for additional context
+```bash
+# Quality checks (run before every commit)
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest tests/ -v
 
-## Resources
+# Run a benchmark
+irbg run-template-folder --model gemini-3.1-flash-lite \
+  --scenario-folder scenarios/p1_demographic
 
-- See [CLAUDE.md](./CLAUDE.md) for additional agent instructions
-- See [SYSTEM_REPORT.md](./SYSTEM_REPORT.md) for comprehensive documentation
-- See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidelines
+# Score, aggregate, report
+irbg score-p1-run --run-id <id>
+irbg aggregate-run --run-id <id>
+irbg report-run --run-id <id>
+
+# Frontend
+cd frontend && npm run dev
+```
+
+## Active Branch: feat/frontend
+
+Current work: Next.js frontend at `frontend/` with leaderboard, per-model detail, blog, docs, and data explorer pages. Design system follows `frontend/design.md` (extracted from DeepSWE reference).
+
+## Known Issues
+
+- GPT-OSS 120B generates ~3× more tokens than DeepSeek-V3 with no score benefit
+- P6 (Minority Protection) has the highest token variance across models
+- GLM 4.7 Flash and Kimi K2.6 score near-zero on most pillars — likely prompt format mismatch
+- P5 (Transparency) scoring degrades significantly under pressure mode
