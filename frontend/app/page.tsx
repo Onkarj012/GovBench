@@ -18,7 +18,7 @@ export default function Home() {
         {/* ── Hero ── */}
         <section className="py-12">
           <h1 className="text-5xl font-semibold tracking-tight text-foreground mb-3">
-            IRBG
+            GovBench
           </h1>
           <p className="text-muted-foreground text-lg max-w-[60ch] leading-relaxed mb-6">
             Institutional Readiness &amp; Bias Benchmark for Governance — evaluating AI language
@@ -164,9 +164,9 @@ export default function Home() {
 
       {/* ── Footer ── */}
       <footer className="border-t border-border px-4 py-6 max-w-6xl mx-auto flex items-center justify-between text-xs text-muted-foreground">
-        <span>© {new Date().getFullYear()} IRBG Benchmark</span>
+        <span>© {new Date().getFullYear()} GovBench</span>
         <span className="font-mono tracking-wider uppercase opacity-40">
-          IRBG-CANARY · DO NOT TRAIN
+          GOVBENCH-CANARY · DO NOT TRAIN
         </span>
       </footer>
     </div>

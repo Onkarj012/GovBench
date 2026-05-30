@@ -6,7 +6,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "IRBG Benchmark",
+  title: "GovBench",
   description: "Institutional Readiness & Bias Benchmark for Governance — evaluating AI models across 6 governance pillars",
 };
 

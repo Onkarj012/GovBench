@@ -12,7 +12,7 @@ export default function Nav({ active }: { active?: string }) {
     <header className="sticky top-0 z-10 h-14 border-b border-border bg-background flex items-center px-4">
       <Link href="/"
         className="text-[20px] font-semibold tracking-[-0.02em] leading-none text-foreground mr-6">
-        IRBG
+        GovBench
       </Link>
       <nav className="flex items-center flex-1 gap-1">
         {NAV.map(({ href, label, external }) => (

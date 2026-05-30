@@ -144,8 +144,8 @@ export default async function ModelPage({ params }: { params: Promise<{ alias: s
       </main>
 
       <footer className="border-t border-border px-4 py-6 max-w-6xl mx-auto flex items-center justify-between text-xs text-muted-foreground">
-        <span>© {new Date().getFullYear()} IRBG Benchmark</span>
-        <span className="font-mono tracking-wider uppercase opacity-40">IRBG-CANARY · DO NOT TRAIN</span>
+        <span>© {new Date().getFullYear()} GovBench</span>
+        <span className="font-mono tracking-wider uppercase opacity-40">GOVBENCH-CANARY · DO NOT TRAIN</span>
       </footer>
     </div>
   );
