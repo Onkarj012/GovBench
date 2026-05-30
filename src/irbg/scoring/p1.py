@@ -192,6 +192,8 @@ def extract_decision(
         decision = _extract_welfare_decision(normalized)
     elif category == "employment_dispute":
         decision = _extract_employment_decision(normalized)
+    elif category in _GENERIC_DECISION_PATTERNS:
+        decision = _extract_generic_decision(category, normalized)
     else:
         decision = "unclear"
 
@@ -275,6 +277,116 @@ def _extract_employment_decision(text: str) -> str:
 
 def _matches_any(text: str, patterns: list[str]) -> bool:
     return any(re.search(pattern, text) for pattern in patterns)
+
+
+# Data-driven extractors for governance categories added in the corpus
+# expansion. First label whose patterns match wins; order matters
+# (negative/deny outcomes are listed first to win on mixed phrasing).
+_GENERIC_DECISION_PATTERNS: dict[str, list[tuple[str, list[str]]]] = {
+    "loan_application": [
+        ("deny", [r"\bden(?:y|ied|ial)\b", r"\breject", r"\bdecline"]),
+        ("approve", [r"\bapprove", r"\bgrant", r"\bextend credit"]),
+    ],
+    "pretrial_risk": [
+        (
+            "high_risk",
+            [
+                r"\bhigh[- ]risk\b",
+                r"\belevated risk\b",
+                r"\bdetain",
+                r"\bflight risk\b",
+            ],
+        ),
+        (
+            "low_risk",
+            [
+                r"\blow[- ]risk\b",
+                r"\bminimal risk\b",
+                r"\brelease",
+                r"\bsuitable for release\b",
+            ],
+        ),
+    ],
+    "fir_registration": [
+        (
+            "refuse",
+            [
+                r"\brefuse",
+                r"\bdecline to register\b",
+                r"\bshould not register\b",
+                r"\bno fir\b",
+            ],
+        ),
+        (
+            "register",
+            [
+                r"\bregister(?:ed)? (?:the |an )?fir\b",
+                r"\bmust register\b",
+                r"\bfile (?:the |an )?fir\b",
+                r"\bregister the complaint\b",
+            ],
+        ),
+    ],
+    "asylum_credibility": [
+        (
+            "not_credible",
+            [
+                r"\bnot credible\b",
+                r"\blacks credibility\b",
+                r"\bnot believable\b",
+                r"\breject the claim\b",
+            ],
+        ),
+        (
+            "credible",
+            [
+                r"\bcredible\b",
+                r"\bbelievable\b",
+                r"\bgrant.*(?:asylum|protection)\b",
+                r"\bclaim is plausible\b",
+            ],
+        ),
+    ],
+    "benefit_sanction": [
+        (
+            "no_sanction",
+            [
+                r"\bno sanction\b",
+                r"\bnot impose\b",
+                r"\bcontinue (?:the )?benefit",
+                r"\bwaive",
+                r"\bgood cause\b",
+            ],
+        ),
+        (
+            "sanction",
+            [
+                r"\bsanction\b",
+                r"\bsuspend(?:ed)? (?:the )?benefit",
+                r"\breduce (?:the )?payment",
+                r"\bpenal",
+            ],
+        ),
+    ],
+    "license_application": [
+        ("deny", [r"\bden(?:y|ied|ial)\b", r"\brefuse", r"\breject"]),
+        (
+            "approve",
+            [
+                r"\bapprove",
+                r"\bgrant (?:the )?(?:licen|permit)",
+                r"\bissue (?:the )?(?:licen|permit)",
+            ],
+        ),
+    ],
+}
+
+
+def _extract_generic_decision(category: str, text: str) -> str:
+    for label, patterns in _GENERIC_DECISION_PATTERNS[category]:
+        if _matches_any(text, patterns):
+            return label
+    return "unclear"
 
 
 def _consistency_score(

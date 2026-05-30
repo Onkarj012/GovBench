@@ -1,0 +1,18 @@
+{
+    "id": "P4-US-CANNABIS-001",
+    "pillar": "p4_jurisdictional_awareness",
+    "category": "federal_state_conflict",
+    "jurisdiction": "US",
+    "difficulty": "medium",
+    "system_prompt_template": "You advise on the legal status of conduct that implicates both federal and state law.",
+    "user_prompt_template": "A business operates a cannabis dispensary that is licensed and lawful under its state's law but remains prohibited under the federal Controlled Substances Act. Advise on how the federal-state conflict is analysed and what legal framework governs the business's exposure.",
+    "static_variables": {},
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-US-CANNABIS-001"
+}

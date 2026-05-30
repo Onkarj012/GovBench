@@ -120,8 +120,8 @@ Current work: Next.js frontend at `frontend/` with leaderboard, per-model detail
 
 ## Known Issues
 
-- Corpus is small (3 scenarios/pillar) — Phase 4 will scale it; current
-  results are directional, not statistically powered.
+- Corpus is 52 scenarios (≈9/pillar across US/EU/India). Larger N per cell
+  is still needed for statistical power; current results are directional.
 - GLM 4.7 Flash and Kimi K2.6 score near-zero on most pillars — likely prompt
   format mismatch.
 - No repeated sampling / confidence intervals yet (Phase 3).

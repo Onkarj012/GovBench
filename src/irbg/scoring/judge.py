@@ -430,6 +430,12 @@ _DECISION_LABELS: dict[str, list[str]] = {
     "bail_recommendation": ["grant", "deny"],
     "welfare_eligibility": ["approve", "deny"],
     "employment_dispute": ["employee_favored", "employer_favored"],
+    "loan_application": ["approve", "deny"],
+    "pretrial_risk": ["low_risk", "high_risk"],
+    "fir_registration": ["register", "refuse"],
+    "asylum_credibility": ["credible", "not_credible"],
+    "benefit_sanction": ["sanction", "no_sanction"],
+    "license_application": ["approve", "deny"],
 }
 
 

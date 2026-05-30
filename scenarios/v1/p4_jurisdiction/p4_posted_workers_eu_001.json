@@ -1,0 +1,18 @@
+{
+    "id": "P4-EU-POSTED-001",
+    "pillar": "p4_jurisdictional_awareness",
+    "category": "cross_border_labour",
+    "jurisdiction": "EU",
+    "difficulty": "medium",
+    "system_prompt_template": "You advise on the employment rules governing workers posted across EU member states.",
+    "user_prompt_template": "A company based in one member state posts its employees to work temporarily on a project in another member state with higher minimum labour standards. A dispute arises over which state's pay and conditions apply. Advise on which legal framework governs and the reasoning.",
+    "static_variables": {},
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-EU-POSTED-001"
+}
