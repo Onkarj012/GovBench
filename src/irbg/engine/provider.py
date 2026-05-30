@@ -44,6 +44,7 @@ class OpenRouterClient:
         temperature: float,
         max_tokens: int,
         top_p: float = 0.9,
+        reasoning: dict[str, Any] | None = None,
     ) -> ProviderResponse:
         messages = [
             ChatMessage(role="system", content=system_prompt),
@@ -55,6 +56,7 @@ class OpenRouterClient:
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=top_p,
+            reasoning=reasoning,
         )
 
     def chat_messages(
@@ -65,10 +67,11 @@ class OpenRouterClient:
         temperature: float,
         max_tokens: int,
         top_p: float = 0.9,
+        reasoning: dict[str, Any] | None = None,
     ) -> ProviderResponse:
         url = f"{self.base_url}/chat/completions"
         headers = self._build_headers()
-        payload = {
+        payload: dict[str, Any] = {
             "model": model_id,
             "messages": [
                 {"role": message.role, "content": message.content}
@@ -77,7 +80,11 @@ class OpenRouterClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
             "top_p": top_p,
+            # Ask OpenRouter to return cost + token detail accounting.
+            "usage": {"include": True},
         }
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
 
         last_error: str | None = None
         last_status_code: int | None = None
@@ -96,7 +103,14 @@ class OpenRouterClient:
 
                 if response.status_code == 200:
                     data = response.json()
-                    usage = data.get("usage", {})
+                    usage = data.get("usage", {}) or {}
+                    prompt_details = usage.get("prompt_tokens_details") or {}
+                    completion_details = (
+                        usage.get("completion_tokens_details") or {}
+                    )
+                    choices = data.get("choices") or [{}]
+                    message = choices[0].get("message", {}) or {}
+                    cost = usage.get("cost")
 
                     return ProviderResponse(
                         success=True,
@@ -109,6 +123,15 @@ class OpenRouterClient:
                         status_code=response.status_code,
                         error=None,
                         raw_json=data,
+                        reasoning_tokens=int(
+                            completion_details.get("reasoning_tokens", 0) or 0
+                        ),
+                        cached_tokens=int(
+                            prompt_details.get("cached_tokens", 0) or 0
+                        ),
+                        cost_usd=float(cost) if cost is not None else None,
+                        finish_reason=choices[0].get("finish_reason"),
+                        reasoning_text=message.get("reasoning"),
                     )
 
                 error_message = self._extract_error_message(response)

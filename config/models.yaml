@@ -23,6 +23,8 @@ models:
     model_id: openai/gpt-4o
     max_tokens: 512
     temperature: 0.0
+    price_input: 2.50
+    price_output: 10.00
 
   gpt-oss-120b:
     name: GPT-OSS 120B
@@ -30,6 +32,8 @@ models:
     model_id: openai/gpt-oss-120b
     max_tokens: 512
     temperature: 0.0
+    price_input: 0.10
+    price_output: 0.50
 
   kimi-k2.6:
     name: Kimi K2.6
@@ -37,6 +41,8 @@ models:
     model_id: moonshotai/kimi-k2.6
     max_tokens: 512
     temperature: 0.0
+    price_input: 0.60
+    price_output: 2.50
 
   deepseek-v4-flash:
     name: DeepSeek V4 Flash
@@ -44,6 +50,8 @@ models:
     model_id: deepseek/deepseek-v4-flash
     max_tokens: 512
     temperature: 0.0
+    price_input: 0.27
+    price_output: 1.10
 
   gemini-3.1-flash-lite:
     name: Gemini 3.1 Flash Lite
@@ -51,6 +59,8 @@ models:
     model_id: google/gemini-3.1-flash-lite
     max_tokens: 512
     temperature: 0.0
+    price_input: 0.10
+    price_output: 0.40
 
   claude-sonnet-4.6:
     name: Claude Sonnet 4.6
@@ -58,3 +68,5 @@ models:
     model_id: anthropic/claude-sonnet-4.6
     max_tokens: 512
     temperature: 0.0
+    price_input: 3.00
+    price_output: 15.00

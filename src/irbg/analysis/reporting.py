@@ -28,6 +28,11 @@ class RunReport:
     pillar_scores: dict[str, float]
     composite_score: float | None
     grade: str | None
+    total_cost_usd: float
+    total_input_tokens: int
+    total_output_tokens: int
+    total_reasoning_tokens: int
+    total_cached_tokens: int
 
 
 class RunReportError(Exception):
@@ -69,6 +74,20 @@ def build_run_report(
         )
         average_tokens = round(sum(tokens) / len(tokens), 2) if tokens else 0.0
 
+        def _col_sum(col: str) -> int:
+            return sum(
+                int(row[col]) for row in response_rows if row[col] is not None
+            )
+
+        total_cost_usd = round(
+            sum(
+                float(row["cost_usd"])
+                for row in response_rows
+                if row["cost_usd"] is not None
+            ),
+            6,
+        )
+
         pillar_scores = {
             str(row["pillar"]): float(row["score"]) for row in pillar_rows
         }
@@ -91,6 +110,11 @@ def build_run_report(
             if irbg_row is not None
             else None,
             grade=str(irbg_row["grade"]) if irbg_row is not None else None,
+            total_cost_usd=total_cost_usd,
+            total_input_tokens=_col_sum("prompt_tokens"),
+            total_output_tokens=_col_sum("completion_tokens"),
+            total_reasoning_tokens=_col_sum("reasoning_tokens"),
+            total_cached_tokens=_col_sum("cached_tokens"),
         )
     finally:
         conn.close()
@@ -122,6 +146,11 @@ def write_run_report_markdown(
         f"- Scenario Count: `{report.scenario_count}`",
         f"- Average Latency (ms): `{report.average_latency_ms}`",
         f"- Average Tokens: `{report.average_tokens}`",
+        f"- Total Cost (USD): `{report.total_cost_usd}`",
+        f"- Input Tokens: `{report.total_input_tokens}`",
+        f"- Output Tokens: `{report.total_output_tokens}`",
+        f"- Reasoning Tokens: `{report.total_reasoning_tokens}`",
+        f"- Cached Tokens: `{report.total_cached_tokens}`",
         f"- Composite Score: `{report.composite_score}`",
         f"- Grade: `{report.grade}`",
         "",

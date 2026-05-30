@@ -22,6 +22,11 @@ class ModelConfig:
     temperature: float
     top_p: float = 0.9
     family: str = ""
+    # USD per 1M tokens; used to compute cost when the provider does not
+    # report one. reasoning: None (model default) | "off" | effort level.
+    price_input: float = 0.0
+    price_output: float = 0.0
+    reasoning: str | None = None
 
 
 def load_model_config(
@@ -61,6 +66,13 @@ def load_model_config(
                 family=str(
                     values.get("family")
                     or str(values["model_id"]).split("/")[0]
+                ),
+                price_input=float(values.get("price_input", 0.0)),
+                price_output=float(values.get("price_output", 0.0)),
+                reasoning=(
+                    str(values["reasoning"])
+                    if values.get("reasoning") is not None
+                    else None
                 ),
             )
         except KeyError as exc:

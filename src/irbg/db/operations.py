@@ -185,6 +185,13 @@ def insert_response(
     response_tokens: int | None,
     latency_ms: int | None,
     repeat_index: int = 0,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    reasoning_tokens: int | None = None,
+    cached_tokens: int | None = None,
+    cost_usd: float | None = None,
+    finish_reason: str | None = None,
+    reasoning_text: str | None = None,
 ) -> str:
     response_id = new_id()
 
@@ -202,10 +209,19 @@ def insert_response(
             user_prompt_sent,
             raw_response,
             response_tokens,
+            prompt_tokens,
+            completion_tokens,
+            reasoning_tokens,
+            cached_tokens,
+            cost_usd,
+            finish_reason,
+            reasoning_text,
             latency_ms,
             created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        );
         """,
         (
             response_id,
@@ -219,6 +235,13 @@ def insert_response(
             user_prompt_sent,
             raw_response,
             response_tokens,
+            prompt_tokens,
+            completion_tokens,
+            reasoning_tokens,
+            cached_tokens,
+            cost_usd,
+            finish_reason,
+            reasoning_text,
             latency_ms,
             now_utc_iso(),
         ),
@@ -362,6 +385,12 @@ def get_responses_for_run(
             r.user_prompt_sent,
             r.raw_response,
             r.response_tokens,
+            r.prompt_tokens,
+            r.completion_tokens,
+            r.reasoning_tokens,
+            r.cached_tokens,
+            r.cost_usd,
+            r.finish_reason,
             r.latency_ms,
             r.created_at,
             s.pillar,

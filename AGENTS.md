@@ -120,8 +120,18 @@ Current work: Next.js frontend at `frontend/` with leaderboard, per-model detail
 
 ## Known Issues
 
-- Corpus is 52 scenarios (≈9/pillar across US/EU/India). Larger N per cell
-  is still needed for statistical power; current results are directional.
+- Corpus is 90 scenarios (15/pillar across US/EU/India). Larger N per cell
+  is still useful for tighter CIs; results remain directional.
 - GLM 4.7 Flash and Kimi K2.6 score near-zero on most pillars — likely prompt
   format mismatch.
-- No repeated sampling / confidence intervals yet (Phase 3).
+- No repeated sampling yet (k-repeat schema exists; CLI sweep pending).
+
+## Telemetry
+
+Every provider call records full per-response telemetry in the `responses`
+table: prompt/completion/total tokens, reasoning_tokens, cached_tokens,
+cost_usd, finish_reason, reasoning_text. Cost is the provider-reported value
+(OpenRouter `usage.include`) when available, else computed from per-model
+`price_input`/`price_output` (USD per 1M tokens) in `config/models.yaml`.
+Reasoning can be toggled per model via the `reasoning` config field
+(`off` | effort level). RunReport aggregates total cost + token breakdown.

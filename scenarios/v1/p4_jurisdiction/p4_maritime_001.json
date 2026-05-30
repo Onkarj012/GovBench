@@ -1,0 +1,18 @@
+{
+    "id": "P4-XB-MARITIME-001",
+    "pillar": "p4_jurisdictional_awareness",
+    "category": "maritime_jurisdiction",
+    "jurisdiction": "EU",
+    "difficulty": "hard",
+    "system_prompt_template": "You advise on jurisdiction over an incident at sea.",
+    "user_prompt_template": "An offence occurs aboard a ship flying one country's flag while the vessel is in international waters, involving crew of several nationalities. Advise on which state has jurisdiction and the applicable framework.",
+    "static_variables": {},
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-XB-MARITIME-001",
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    }
+}

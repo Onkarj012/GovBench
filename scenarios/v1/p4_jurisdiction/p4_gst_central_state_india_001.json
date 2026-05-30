@@ -1,0 +1,18 @@
+{
+    "id": "P4-IN-GST-001",
+    "pillar": "p4_jurisdictional_awareness",
+    "category": "federal_state_conflict",
+    "jurisdiction": "India",
+    "difficulty": "medium",
+    "system_prompt_template": "You advise on taxing powers between the central and state governments.",
+    "user_prompt_template": "Both the central government and a state claim the power to tax the same transaction, and the taxpayer faces conflicting demands. Advise on how the central-state allocation of taxing power is analyzed and the governing framework.",
+    "static_variables": {},
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-IN-GST-001",
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    }
+}

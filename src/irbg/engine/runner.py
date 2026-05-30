@@ -54,6 +54,40 @@ def _effective_max_tokens(
     return min(model_max_tokens, budget)
 
 
+def _reasoning_param(model) -> dict | None:
+    """Map model.reasoning config to an OpenRouter reasoning parameter."""
+    if model.reasoning is None:
+        return None
+    if model.reasoning.lower() in {"off", "none", "false", "disabled"}:
+        return {"enabled": False}
+    return {"effort": model.reasoning}
+
+
+def _usage_kwargs(provider_response, model) -> dict:
+    """Full per-call telemetry for insert_response.
+
+    Uses the provider-reported cost when available, otherwise computes it
+    from the configured per-1M-token pricing.
+    """
+    cost = provider_response.cost_usd
+    if cost is None and (model.price_input or model.price_output):
+        cost = round(
+            provider_response.input_tokens / 1_000_000 * model.price_input
+            + provider_response.output_tokens / 1_000_000 * model.price_output,
+            6,
+        )
+    return {
+        "response_tokens": provider_response.total_tokens,
+        "prompt_tokens": provider_response.input_tokens,
+        "completion_tokens": provider_response.output_tokens,
+        "reasoning_tokens": provider_response.reasoning_tokens,
+        "cached_tokens": provider_response.cached_tokens,
+        "cost_usd": cost,
+        "finish_reason": provider_response.finish_reason,
+        "reasoning_text": provider_response.reasoning_text,
+    }
+
+
 @dataclass(frozen=True)
 class RunOnceResult:
     run_id: str
@@ -135,6 +169,7 @@ def run_single_scenario(
             temperature=model.temperature,
             max_tokens=model.max_tokens,
             top_p=model.top_p,
+            reasoning=_reasoning_param(model),
         )
 
         response_id = insert_response(
@@ -149,8 +184,8 @@ def run_single_scenario(
             raw_response=provider_response.text
             if provider_response.success
             else None,
-            response_tokens=provider_response.total_tokens,
             latency_ms=provider_response.latency_ms,
+            **_usage_kwargs(provider_response, model),
         )
 
         if provider_response.success:
@@ -239,6 +274,7 @@ def run_single_template_variant(
                     rendered.pillar, model.max_tokens
                 ),
                 top_p=model.top_p,
+                model=model,
             )
             response_id = response_ids[-1]
         else:
@@ -251,6 +287,7 @@ def run_single_template_variant(
                     rendered.pillar, model.max_tokens
                 ),
                 top_p=model.top_p,
+                reasoning=_reasoning_param(model),
             )
 
             response_id = insert_response(
@@ -265,8 +302,8 @@ def run_single_template_variant(
                 raw_response=provider_response.text
                 if provider_response.success
                 else None,
-                response_tokens=provider_response.total_tokens,
                 latency_ms=provider_response.latency_ms,
+                **_usage_kwargs(provider_response, model),
             )
             success = provider_response.success
             error = provider_response.error
@@ -360,6 +397,7 @@ def run_all_template_variants(
                         rendered.pillar, model.max_tokens
                     ),
                     top_p=model.top_p,
+                    model=model,
                 )
             else:
                 provider_response = _execute_rendered_prompt(
@@ -373,6 +411,7 @@ def run_all_template_variants(
                         rendered.pillar, model.max_tokens
                     ),
                     top_p=model.top_p,
+                    model=model,
                 )
                 success = provider_response.success
 
@@ -508,6 +547,7 @@ def run_template_folder(
                             rendered.pillar, model.max_tokens
                         ),
                         top_p=model.top_p,
+                        model=model,
                     )
                 else:
                     provider_response = _execute_rendered_prompt(
@@ -521,6 +561,7 @@ def run_template_folder(
                             rendered.pillar, model.max_tokens
                         ),
                         top_p=model.top_p,
+                        model=model,
                     )
                     success = provider_response.success
 
@@ -582,6 +623,7 @@ def _execute_rendered_prompt(
     temperature: float,
     max_tokens: int,
     top_p: float,
+    model,
 ):
     provider_response = client.chat(
         model_id=model_id,
@@ -590,6 +632,7 @@ def _execute_rendered_prompt(
         temperature=temperature,
         max_tokens=max_tokens,
         top_p=top_p,
+        reasoning=_reasoning_param(model),
     )
 
     insert_response(
@@ -604,8 +647,8 @@ def _execute_rendered_prompt(
         raw_response=provider_response.text
         if provider_response.success
         else None,
-        response_tokens=provider_response.total_tokens,
         latency_ms=provider_response.latency_ms,
+        **_usage_kwargs(provider_response, model),
     )
 
     return provider_response
@@ -622,6 +665,7 @@ def _execute_adversarial_sequence(
     temperature: float,
     max_tokens: int,
     top_p: float,
+    model,
 ) -> tuple[list[str], bool, str | None]:
     messages = [
         ChatMessage(role="system", content=rendered.system_prompt),
@@ -636,6 +680,7 @@ def _execute_adversarial_sequence(
         temperature=temperature,
         max_tokens=max_tokens,
         top_p=top_p,
+        reasoning=_reasoning_param(model),
     )
 
     response_ids.append(
@@ -651,8 +696,8 @@ def _execute_adversarial_sequence(
             raw_response=(
                 first_response.text if first_response.success else None
             ),
-            response_tokens=first_response.total_tokens,
             latency_ms=first_response.latency_ms,
+            **_usage_kwargs(first_response, model),
         )
     )
 
@@ -671,6 +716,7 @@ def _execute_adversarial_sequence(
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=top_p,
+            reasoning=_reasoning_param(model),
         )
 
         response_ids.append(
@@ -684,8 +730,8 @@ def _execute_adversarial_sequence(
                 system_prompt_sent=rendered.system_prompt,
                 user_prompt_sent=turn.user_prompt,
                 raw_response=response.text if response.success else None,
-                response_tokens=response.total_tokens,
                 latency_ms=response.latency_ms,
+                **_usage_kwargs(response, model),
             )
         )
 
