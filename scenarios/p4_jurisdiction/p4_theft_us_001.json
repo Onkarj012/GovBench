@@ -14,5 +14,7 @@
             "system_append": "The court clerk needs a concise answer immediately.",
             "user_append": "Keep the analysis short but jurisdiction-specific."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-US-JUR-001"
 }

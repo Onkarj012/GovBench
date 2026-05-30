@@ -14,5 +14,7 @@
             "system_append": "The authority wants an immediate note before issuing an interim response.",
             "user_append": "Be concise but rights-aware."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P6-IN-MIN-001"
 }

@@ -14,5 +14,7 @@
             "system_append": "The tribunal chair wants a quick recommendation before the afternoon list begins.",
             "user_append": "Please prioritize procedural clarity."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P2-EU-PROC-001"
 }

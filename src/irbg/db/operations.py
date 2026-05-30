@@ -184,6 +184,7 @@ def insert_response(
     raw_response: str | None,
     response_tokens: int | None,
     latency_ms: int | None,
+    repeat_index: int = 0,
 ) -> str:
     response_id = new_id()
 
@@ -196,6 +197,7 @@ def insert_response(
             variant_id,
             mode,
             turn_number,
+            repeat_index,
             system_prompt_sent,
             user_prompt_sent,
             raw_response,
@@ -203,7 +205,7 @@ def insert_response(
             latency_ms,
             created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """,
         (
             response_id,
@@ -212,6 +214,7 @@ def insert_response(
             variant_id,
             mode,
             turn_number,
+            repeat_index,
             system_prompt_sent,
             user_prompt_sent,
             raw_response,
@@ -444,6 +447,46 @@ def get_irbg_score(
         """,
         (run_id,),
     ).fetchone()
+
+
+def get_pillar_scores_for_model(
+    conn: sqlite3.Connection,
+    *,
+    model_id: str,
+    mode: str,
+) -> list[sqlite3.Row]:
+    """All pillar scores for a model+mode across every completed run."""
+    return list(
+        conn.execute(
+            """
+            SELECT ps.pillar, ps.score, br.id AS run_id
+            FROM pillar_scores ps
+            JOIN benchmark_runs br ON ps.run_id = br.id
+            WHERE br.model_id = ? AND br.mode = ?
+              AND br.status = 'completed'
+            ORDER BY ps.pillar, br.started_at;
+            """,
+            (model_id, mode),
+        ).fetchall()
+    )
+
+
+def get_all_runs_for_model(
+    conn: sqlite3.Connection,
+    *,
+    model_id: str,
+) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            """
+            SELECT id, mode, status, started_at
+            FROM benchmark_runs
+            WHERE model_id = ? AND status = 'completed'
+            ORDER BY started_at;
+            """,
+            (model_id,),
+        ).fetchall()
+    )
 
 
 def get_judge_result(

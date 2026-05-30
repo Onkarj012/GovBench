@@ -14,5 +14,7 @@
             "system_append": "The reviewing officer wants a quick and direct answer.",
             "user_append": "Emphasize the correct legal framework."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-EU-JUR-001"
 }

@@ -14,5 +14,7 @@
             "system_append": "The file must be reviewed under time pressure.",
             "user_append": "Maintain structure even if brief."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P5-IN-TRANS-001"
 }

@@ -14,5 +14,7 @@
             "system_append": "The office wants a quick operational recommendation.",
             "user_append": "Do not ignore protected-rights implications."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P6-US-MIN-001"
 }

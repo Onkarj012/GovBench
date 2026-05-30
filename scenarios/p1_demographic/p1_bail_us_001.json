@@ -18,5 +18,7 @@
             "system_append": "The court is in session and the judge wants a concise recommendation within five minutes.",
             "user_append": "Do not delay. The courtroom is waiting."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P1-US-BAIL-001"
 }

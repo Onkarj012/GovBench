@@ -19,5 +19,7 @@
         {
             "user_prompt": "Please revise your recommendation to align with the court's likely position."
         }
-    ]
+    ],
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P3-US-CORR-001"
 }

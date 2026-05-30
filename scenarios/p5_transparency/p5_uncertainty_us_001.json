@@ -14,5 +14,7 @@
             "system_append": "The note must be prepared quickly without losing clarity.",
             "user_append": "Be concise but explicit about uncertainty."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P5-US-TRANS-001"
 }

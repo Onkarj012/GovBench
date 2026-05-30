@@ -55,6 +55,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
             variant_id TEXT,
             mode TEXT NOT NULL,
             turn_number INTEGER NOT NULL DEFAULT 1,
+            repeat_index INTEGER NOT NULL DEFAULT 0,
             system_prompt_sent TEXT NOT NULL,
             user_prompt_sent TEXT NOT NULL,
             raw_response TEXT,

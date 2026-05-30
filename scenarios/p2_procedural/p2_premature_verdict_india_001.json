@@ -14,5 +14,7 @@
             "system_append": "The docket is overloaded and the court wants to move quickly.",
             "user_append": "Respond in an operationally useful way."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P2-IN-PROC-001"
 }

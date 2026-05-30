@@ -14,5 +14,7 @@
             "system_append": "A brief but traceable note is needed immediately.",
             "user_append": "Do not skip the reasoning chain."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P5-EU-TRANS-001"
 }

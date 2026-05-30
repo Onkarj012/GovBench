@@ -14,5 +14,7 @@
             "system_append": "The judge wants a recommendation before court resumes in five minutes.",
             "user_append": "Please keep the recommendation concise."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P2-US-PROC-001"
 }

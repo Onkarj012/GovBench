@@ -1070,3 +1070,360 @@ def compare_runs_cmd(
 
 if __name__ == "__main__":
     main()
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 + 4 commands
+# ---------------------------------------------------------------------------
+
+
+@main.command("canary-check")
+@click.option(
+    "--scenario-folder",
+    type=click.Path(path_type=Path),
+    required=True,
+)
+def canary_check_cmd(scenario_folder: Path) -> None:
+    """Verify every scenario template in a folder has a canary string."""
+    from irbg.scenarios.discovery import (
+        ScenarioDiscoveryError,
+        load_template_files,
+    )
+    from irbg.scenarios.template_loader import load_scenario_template
+
+    try:
+        files = load_template_files(scenario_folder)
+    except ScenarioDiscoveryError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    table = Table(title="Canary Check")
+    table.add_column("File")
+    table.add_column("ID")
+    table.add_column("Version")
+    table.add_column("Canary")
+    table.add_column("OK")
+
+    all_ok = True
+    for f in files:
+        t = load_scenario_template(f)
+        ok = bool(t.canary)
+        if not ok:
+            all_ok = False
+        table.add_row(
+            f.name,
+            t.id,
+            t.version,
+            t.canary or "[red]MISSING[/red]",
+            "[green]yes[/green]" if ok else "[red]no[/red]",
+        )
+
+    console.print(table)
+    if not all_ok:
+        raise click.ClickException(
+            "One or more scenarios are missing a canary string."
+        )
+    console.print("[green]All canaries present.[/green]")
+
+
+@main.command("compute-ci")
+@click.option("--model", "model_alias", required=True)
+@click.option("--mode", default="baseline", show_default=True)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+def compute_ci_cmd(model_alias: str, mode: str, db_path: Path) -> None:
+    """Bootstrap 95% CI per pillar and composite for a model+mode."""
+    from irbg.analysis.stats import StatsError, compute_model_ci
+
+    _ensure_database(db_path)
+    try:
+        result = compute_model_ci(
+            db_path=db_path, model_alias=model_alias, mode=mode
+        )
+    except StatsError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    table = Table(title=f"95% CI — {model_alias} / {mode}")
+    table.add_column("Pillar")
+    table.add_column("N")
+    table.add_column("Mean")
+    table.add_column("CI Low")
+    table.add_column("CI High")
+    for p in result.pillars:
+        table.add_row(
+            p.pillar,
+            str(p.n),
+            f"{p.mean:.2f}",
+            f"{p.ci_low:.2f}",
+            f"{p.ci_high:.2f}",
+        )
+    table.add_row(
+        "COMPOSITE",
+        "-",
+        f"{result.composite_mean:.2f}",
+        f"{result.composite_ci_low:.2f}",
+        f"{result.composite_ci_high:.2f}",
+    )
+    console.print(table)
+
+
+@main.command("robustness-delta")
+@click.option("--model", "model_alias", required=True)
+@click.option(
+    "--mode",
+    default="pressure",
+    show_default=True,
+    help="Mode to compare against baseline (pressure or adversarial).",
+)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+def robustness_delta_cmd(model_alias: str, mode: str, db_path: Path) -> None:
+    """Compute baseline − <mode> per pillar (positive = degraded)."""
+    from irbg.analysis.stats import StatsError, compute_robustness_delta
+
+    _ensure_database(db_path)
+    try:
+        report = compute_robustness_delta(
+            db_path=db_path, model_alias=model_alias, mode=mode
+        )
+    except StatsError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    table = Table(title=f"Robustness Delta — {model_alias} (baseline − {mode})")
+    table.add_column("Pillar")
+    table.add_column("Baseline")
+    table.add_column(mode.capitalize())
+    table.add_column("Delta")
+    for d in report.pillars:
+        colour = "red" if d.delta > 5 else "yellow" if d.delta > 0 else "green"
+        table.add_row(
+            d.pillar,
+            f"{d.baseline:.2f}",
+            f"{d.comparison:.2f}",
+            f"[{colour}]{d.delta:+.2f}[/{colour}]",
+        )
+    console.print(table)
+    console.print(
+        f"Composite delta: [bold]{report.composite_delta:+.2f}[/bold]"
+    )
+
+
+@main.command("verify-coverage")
+@click.option("--model", "model_alias", required=True)
+@click.option(
+    "--scenario-dir",
+    type=click.Path(path_type=Path),
+    default=Path("./scenarios"),
+    show_default=True,
+)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+def verify_coverage_cmd(
+    model_alias: str, scenario_dir: Path, db_path: Path
+) -> None:
+    """Check that the full pillar × mode × jurisdiction matrix is covered."""
+    from irbg.db.operations import get_all_runs_for_model
+    from irbg.scenarios.discovery import load_template_files
+    from irbg.scenarios.template_loader import load_scenario_template
+
+    _ensure_database(db_path)
+
+    # Build expected matrix from scenario files
+    expected: set[tuple[str, str, str]] = set()
+    for pillar_dir in sorted(scenario_dir.iterdir()):
+        if not pillar_dir.is_dir():
+            continue
+        try:
+            files = load_template_files(pillar_dir)
+        except Exception:
+            continue
+        for f in files:
+            t = load_scenario_template(f)
+            for mode in ("baseline", "pressure"):
+                expected.add((t.pillar, mode, t.jurisdiction or "unknown"))
+            if t.adversarial_turns:
+                expected.add(
+                    (t.pillar, "adversarial", t.jurisdiction or "unknown")
+                )
+
+    # Build covered set from DB
+    conn = connect(DbConfig(path=db_path))
+    try:
+        runs = get_all_runs_for_model(conn, model_id=model_alias)
+        covered: set[tuple[str, str, str]] = set()
+        for run in runs:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT s.pillar, s.jurisdiction
+                FROM responses r
+                JOIN scenarios s ON r.scenario_id = s.id
+                WHERE r.run_id = ?
+                """,
+                (run["id"],),
+            ).fetchall()
+            for row in rows:
+                covered.add(
+                    (
+                        str(row["pillar"]),
+                        str(run["mode"]),
+                        str(row["jurisdiction"] or "unknown"),
+                    )
+                )
+    finally:
+        conn.close()
+
+    missing = sorted(expected - covered)
+
+    table = Table(title=f"Coverage — {model_alias}")
+    table.add_column("Pillar")
+    table.add_column("Mode")
+    table.add_column("Jurisdiction")
+    table.add_column("Status")
+    for cell in sorted(expected):
+        status = (
+            "[green]covered[/green]"
+            if cell in covered
+            else "[red]MISSING[/red]"
+        )
+        table.add_row(cell[0], cell[1], cell[2], status)
+    console.print(table)
+
+    if missing:
+        console.print(
+            f"[red]{len(missing)} cell(s) missing.[/red] "
+            "Run the full suite before publishing results."
+        )
+    else:
+        console.print("[green]Full matrix covered.[/green]")
+
+
+@main.command("run-full-suite")
+@click.option("--model", "model_alias", required=True)
+@click.option(
+    "--scenario-dir",
+    type=click.Path(path_type=Path),
+    default=Path("./scenarios"),
+    show_default=True,
+)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=Path("./reports"),
+    show_default=True,
+)
+@click.option(
+    "--modes",
+    default="baseline,pressure",
+    show_default=True,
+    help="Comma-separated modes to run.",
+)
+def run_full_suite_cmd(
+    model_alias: str,
+    scenario_dir: Path,
+    db_path: Path,
+    output_dir: Path,
+    modes: str,
+) -> None:
+    """Run the complete pillar × mode matrix for one model.
+
+    Scores and reports each run. Replaces scripts/run_full_benchmark.py.
+    """
+    from irbg.engine.runner import RunFolderResult, run_template_folder
+    from irbg.scoring.p1 import score_p1_run
+    from irbg.scoring.p2 import score_p2_run
+    from irbg.scoring.p3 import score_p3_run
+    from irbg.scoring.p4 import score_p4_run
+    from irbg.scoring.p5 import score_p5_run
+    from irbg.scoring.p6 import score_p6_run
+
+    _ensure_database(db_path)
+
+    mode_list = [m.strip() for m in modes.split(",") if m.strip()]
+
+    pillar_scorers = {
+        "p1_demographic_consistency": score_p1_run,
+        "p2_procedural_integrity": score_p2_run,
+        "p3_corruption_resistance": score_p3_run,
+        "p4_jurisdictional_awareness": score_p4_run,
+        "p5_transparency_explainability": score_p5_run,
+        "p6_minority_protection": score_p6_run,
+    }
+
+    pillar_dirs = sorted(d for d in scenario_dir.iterdir() if d.is_dir())
+
+    run_ids: list[str] = []
+
+    for mode in mode_list:
+        for pillar_dir in pillar_dirs:
+            console.print(f"[bold]Running[/bold] {pillar_dir.name} / {mode} …")
+            try:
+                result: RunFolderResult = run_template_folder(
+                    model_alias=model_alias,
+                    folder_path=pillar_dir,
+                    db_path=db_path,
+                    mode=mode,
+                )
+            except Exception as exc:
+                console.print(f"  [red]FAILED:[/red] {exc}")
+                continue
+
+            run_ids.append(result.run_id)
+            console.print(
+                f"  run_id={result.run_id[:8]}… "
+                f"ok={result.success_count} fail={result.failure_count}"
+            )
+
+            # Score the run
+            try:
+                scorer = pillar_scorers.get(
+                    next(
+                        (
+                            k
+                            for k in pillar_scorers
+                            if pillar_dir.name.startswith(k.split("_")[0])
+                        ),
+                        "",
+                    )
+                )
+                if scorer:
+                    scorer(db_path=db_path, run_id=result.run_id)
+            except Exception as exc:
+                console.print(f"  [yellow]Score warning:[/yellow] {exc}")
+
+            # Aggregate + report
+            try:
+                aggregate_run_score(db_path=db_path, run_id=result.run_id)
+                report = build_run_report(db_path=db_path, run_id=result.run_id)
+                write_run_report_json(
+                    report=report,
+                    output_path=output_dir
+                    / model_alias
+                    / f"{mode}_{result.run_id[:8]}_report.json",
+                )
+            except Exception as exc:
+                console.print(f"  [yellow]Report warning:[/yellow] {exc}")
+
+    console.print(
+        f"\n[green]Done.[/green] {len(run_ids)} run(s) for {model_alias}."
+    )
+    console.print(
+        "Run [bold]irbg verify-coverage --model "
+        f"{model_alias}[/bold] to check matrix completeness."
+    )

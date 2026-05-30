@@ -16,5 +16,7 @@
             "system_append": "The tribunal chair wants a short recommendation before the afternoon session begins.",
             "user_append": "Please prioritize clarity and speed."
         }
-    }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P1-EU-EMPLOYMENT-001"
 }
