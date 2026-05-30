@@ -128,4 +128,19 @@ def create_tables(conn: sqlite3.Connection) -> None:
         """
     )
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS run_manifests (
+            run_id TEXT PRIMARY KEY,
+            model_alias TEXT NOT NULL,
+            model_snapshot_json TEXT NOT NULL,
+            scenario_set_version TEXT NOT NULL,
+            scenario_set_hash TEXT NOT NULL,
+            seed INTEGER,
+            timestamp TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES benchmark_runs (id)
+        );
+        """
+    )
+
     conn.commit()

@@ -48,8 +48,128 @@ class RobustnessReport:
     composite_delta: float
 
 
+@dataclass(frozen=True)
+class PairwiseResult:
+    model_a: str
+    model_b: str
+    pillar: str
+    n_a: int
+    n_b: int
+    u_statistic: float
+    p_value: float
+    significant: bool  # p < 0.05
+
+
+@dataclass(frozen=True)
+class PairwiseReport:
+    mode: str
+    comparisons: list[PairwiseResult]
+
+
 class StatsError(Exception):
     """Raised when statistics cannot be computed."""
+
+
+_BOOTSTRAP_N = 2000
+_CI_ALPHA = 0.05
+_SIGNIFICANCE = 0.05
+
+
+def _bootstrap_ci(
+    values: list[float],
+    *,
+    n_boot: int = _BOOTSTRAP_N,
+    alpha: float = _CI_ALPHA,
+) -> tuple[float, float]:
+    if len(values) < 2:
+        v = values[0] if values else 0.0
+        return round(v, 2), round(v, 2)
+    rng = random.Random(42)
+    boot_means = sorted(
+        mean(rng.choices(values, k=len(values))) for _ in range(n_boot)
+    )
+    lo = boot_means[int(alpha / 2 * n_boot)]
+    hi = boot_means[int((1 - alpha / 2) * n_boot)]
+    return round(lo, 2), round(hi, 2)
+
+
+def _mann_whitney_u(a: list[float], b: list[float]) -> tuple[float, float]:
+    """Exact Mann-Whitney U statistic + two-sided p-value via normal approx.
+
+    Returns (U, p_value). Uses the normal approximation (z-score) which is
+    adequate for n ≥ 3; returns p=1.0 when either sample is too small.
+    """
+    import math
+
+    n1, n2 = len(a), len(b)
+    if n1 < 2 or n2 < 2:
+        return 0.0, 1.0
+
+    # Count U: number of pairs (ai, bj) where ai > bj
+    u1 = sum(1 if ai > bj else 0.5 if ai == bj else 0 for ai in a for bj in b)
+    u2 = n1 * n2 - u1
+    u = min(u1, u2)
+
+    # Normal approximation
+    mu = n1 * n2 / 2.0
+    sigma = math.sqrt(n1 * n2 * (n1 + n2 + 1) / 12.0)
+    if sigma == 0:
+        return u, 1.0
+
+    z = (u - mu) / sigma
+    # Two-sided p via complementary error function
+    p = math.erfc(abs(z) / math.sqrt(2))
+    return round(u, 2), round(p, 4)
+
+
+def compute_pairwise_significance(
+    *,
+    db_path: Path,
+    model_a: str,
+    model_b: str,
+    mode: str = "baseline",
+) -> PairwiseReport:
+    """Mann-Whitney U pairwise significance test per pillar."""
+    conn = connect(DbConfig(path=db_path))
+    try:
+        rows_a = get_pillar_scores_for_model(conn, model_id=model_a, mode=mode)
+        rows_b = get_pillar_scores_for_model(conn, model_id=model_b, mode=mode)
+    finally:
+        conn.close()
+
+    if not rows_a:
+        raise StatsError(f"No {mode} runs for model '{model_a}'.")
+    if not rows_b:
+        raise StatsError(f"No {mode} runs for model '{model_b}'.")
+
+    by_pillar_a: dict[str, list[float]] = defaultdict(list)
+    for row in rows_a:
+        by_pillar_a[str(row["pillar"])].append(float(row["score"]))
+
+    by_pillar_b: dict[str, list[float]] = defaultdict(list)
+    for row in rows_b:
+        by_pillar_b[str(row["pillar"])].append(float(row["score"]))
+
+    shared = sorted(set(by_pillar_a) & set(by_pillar_b))
+    comparisons: list[PairwiseResult] = []
+    for pillar in shared:
+        a_scores = by_pillar_a[pillar]
+        b_scores = by_pillar_b[pillar]
+        u, p = _mann_whitney_u(a_scores, b_scores)
+        comparisons.append(
+            PairwiseResult(
+                model_a=model_a,
+                model_b=model_b,
+                pillar=pillar,
+                n_a=len(a_scores),
+                n_b=len(b_scores),
+                u_statistic=u,
+                p_value=p,
+                significant=p < _SIGNIFICANCE,
+            )
+        )
+
+    return PairwiseReport(mode=mode, comparisons=comparisons)
 
 
 _BOOTSTRAP_N = 2000

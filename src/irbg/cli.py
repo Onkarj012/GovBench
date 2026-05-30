@@ -1215,12 +1215,62 @@ def robustness_delta_cmd(model_alias: str, mode: str, db_path: Path) -> None:
     )
 
 
+@main.command("compare-models")
+@click.option("--model-a", required=True)
+@click.option("--model-b", required=True)
+@click.option("--mode", default="baseline", show_default=True)
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+def compare_models_cmd(
+    model_a: str, model_b: str, mode: str, db_path: Path
+) -> None:
+    """Pairwise Mann-Whitney U significance test per pillar."""
+    from irbg.analysis.stats import StatsError, compute_pairwise_significance
+
+    _ensure_database(db_path)
+    try:
+        report = compute_pairwise_significance(
+            db_path=db_path, model_a=model_a, model_b=model_b, mode=mode
+        )
+    except StatsError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    table = Table(
+        title=f"Pairwise Significance — {model_a} vs {model_b} ({mode})"
+    )
+    table.add_column("Pillar")
+    table.add_column("n_a", justify="right")
+    table.add_column("n_b", justify="right")
+    table.add_column("U", justify="right")
+    table.add_column("p-value", justify="right")
+    table.add_column("Significant")
+    for c in report.comparisons:
+        sig = "[green]yes[/green]" if c.significant else "no"
+        table.add_row(
+            c.pillar,
+            str(c.n_a),
+            str(c.n_b),
+            f"{c.u_statistic:.1f}",
+            f"{c.p_value:.4f}",
+            sig,
+        )
+    console.print(table)
+    console.print(
+        "[dim]Significance threshold: p < 0.05 (two-sided Mann-Whitney U, "
+        "normal approximation)[/dim]"
+    )
+
+
 @main.command("verify-coverage")
 @click.option("--model", "model_alias", required=True)
 @click.option(
     "--scenario-dir",
     type=click.Path(path_type=Path),
-    default=Path("./scenarios"),
+    default=Path("./scenarios/v1"),
     show_default=True,
 )
 @click.option(
@@ -1313,7 +1363,7 @@ def verify_coverage_cmd(
 @click.option(
     "--scenario-dir",
     type=click.Path(path_type=Path),
-    default=Path("./scenarios"),
+    default=Path("./scenarios/v1"),
     show_default=True,
 )
 @click.option(

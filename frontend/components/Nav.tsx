@@ -1,9 +1,10 @@
 import Link from "next/link";
 
 const NAV = [
-  { href: "/blog",  label: "Blog"  },
-  { href: "/docs",  label: "Docs"  },
-  { href: "/data",  label: "Data"  },
+  { href: "/blog",         label: "Blog"        },
+  { href: "/methodology",  label: "Methodology" },
+  { href: "/docs",         label: "Docs"        },
+  { href: "/data",         label: "Data"        },
   { href: "https://github.com/onkarj012/irbg", label: "GitHub", external: true },
 ];
 

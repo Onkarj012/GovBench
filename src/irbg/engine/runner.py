@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from irbg.db.operations import (
     mark_benchmark_run_completed,
     mark_benchmark_run_failed,
     upsert_model,
+    upsert_run_manifest,
     upsert_scenario,
     upsert_scenario_record,
 )
@@ -440,6 +442,37 @@ def run_template_folder(
             mode=mode,
             status="running",
             config_snapshot=config_snapshot,
+        )
+
+        # Write run manifest (Phase 5)
+        scenario_hashes = sorted(
+            hashlib.sha256(f.read_bytes()).hexdigest() for f in scenario_files
+        )
+        scenario_set_hash = hashlib.sha256(
+            "\n".join(scenario_hashes).encode()
+        ).hexdigest()[:16]
+        scenario_version = (
+            folder_path.parent.name
+            if (folder_path.parent.name.startswith("v"))
+            else "v1"
+        )
+        upsert_run_manifest(
+            conn,
+            run_id=run_id,
+            model_alias=model.alias,
+            model_snapshot_json=json.dumps(
+                {
+                    "alias": model.alias,
+                    "model_id": model.model_id,
+                    "provider": model.provider,
+                    "temperature": model.temperature,
+                    "max_tokens": model.max_tokens,
+                }
+            ),
+            scenario_set_version=scenario_version,
+            scenario_set_hash=scenario_set_hash,
+            seed=None,
+            timestamp=config_snapshot,
         )
 
         for scenario_file in scenario_files:

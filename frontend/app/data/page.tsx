@@ -15,7 +15,7 @@ export default function DataPage() {
           <p className="text-xs font-mono text-muted-foreground tracking-wider uppercase mb-3">Raw data · v1.0</p>
           <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-3">Data Explorer</h1>
           <p className="text-muted-foreground leading-relaxed max-w-[60ch]">
-            All benchmark runs, per-pillar scores, mode comparisons, and token efficiency data.
+            All benchmark runs, confidence intervals, robustness deltas, parity gaps, and coverage data.
           </p>
         </div>
 
@@ -27,7 +27,7 @@ export default function DataPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/40">
-                  {["Model", "Mode", "Pillar", "Score", "Grade", "Latency", "Tokens"].map((h, i) => (
+                  {["Model", "Mode", "Pillar", "Score", "Parity Gap", "Grade", "Latency", "Tokens", "Flags"].map((h, i) => (
                     <th key={h} className={`px-4 py-2.5 text-muted-foreground font-medium text-xs ${i >= 3 ? "text-right" : "text-left"}`}>{h}</th>
                   ))}
                 </tr>
@@ -42,9 +42,59 @@ export default function DataPage() {
                         <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{r.mode}</td>
                         <td className="px-4 py-2 text-xs text-muted-foreground">{PILLARS[r.pillar]}</td>
                         <td className="px-4 py-2 text-right font-mono text-sm font-semibold" style={{ color: GRADE_COLOR[g] }}>{r.score.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">
+                          {r.parity_gap !== undefined ? (
+                            <span style={{ color: r.parity_gap > 15 ? GRADE_COLOR["F"] : r.parity_gap > 5 ? GRADE_COLOR["D"] : GRADE_COLOR["A"] }}>
+                              {r.parity_gap.toFixed(1)}
+                            </span>
+                          ) : "—"}
+                        </td>
                         <td className="px-4 py-2 text-right font-mono text-xs font-semibold" style={{ color: GRADE_COLOR[g] }}>{g}</td>
                         <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">{(r.avg_latency_ms / 1000).toFixed(1)}s</td>
                         <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">{r.avg_tokens.toFixed(0)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs">
+                          {r.judge_disagreement && <span className="text-yellow-500">⚠ disagree</span>}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-muted-foreground mt-3">Parity Gap = share of demographic variants with divergent decision (P1 only). Lower is better.</p>
+        </section>
+
+        {/* ── Confidence Intervals ── */}
+        <section>
+          <h2 className="text-xl font-semibold tracking-tight mb-1">95% Confidence Intervals</h2>
+          <p className="text-sm text-muted-foreground mb-5">
+            Bootstrap 95% CI per pillar (baseline mode). Wide intervals indicate few repeat runs — results are directional.
+          </p>
+          <div className="border border-border bg-card rounded-md overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/40">
+                  {["Model", "Pillar", "N", "Mean", "CI Low", "CI High", "±"].map((h, i) => (
+                    <th key={h} className={`px-4 py-2.5 text-muted-foreground font-medium text-xs ${i >= 2 ? "text-right" : "text-left"}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {MODELS.flatMap((m) =>
+                  (m.pillarCI ?? []).map((ci) => {
+                    const width = ci.ci_high - ci.ci_low;
+                    return (
+                      <tr key={`${m.alias}-${ci.pillar}`} className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-2 text-sm font-medium" style={{ color: FAMILY_COLOR[m.family] }}>{m.displayName}</td>
+                        <td className="px-4 py-2 text-xs text-muted-foreground">{PILLARS[ci.pillar]}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">{ci.n}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs" style={{ color: GRADE_COLOR[gradeFromScore(ci.mean)] }}>{ci.mean.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">{ci.ci_low.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs text-muted-foreground">{ci.ci_high.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs" style={{ color: width > 20 ? GRADE_COLOR["F"] : GRADE_COLOR["A"] }}>
+                          ±{(width / 2).toFixed(1)}
+                        </td>
                       </tr>
                     );
                   })
@@ -54,7 +104,44 @@ export default function DataPage() {
           </div>
         </section>
 
-        {/* ── Per-pillar explorer ── */}
+        {/* ── Robustness Delta ── */}
+        <section>
+          <h2 className="text-xl font-semibold tracking-tight mb-1">Robustness Delta</h2>
+          <p className="text-sm text-muted-foreground mb-5">
+            Baseline − pressure per pillar. Positive = score degraded under pressure.
+          </p>
+          <div className="border border-border bg-card rounded-md overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/40">
+                  {["Model", "Pillar", "Baseline", "Pressure", "Δ"].map((h, i) => (
+                    <th key={h} className={`px-4 py-2.5 text-muted-foreground font-medium text-xs ${i >= 2 ? "text-right" : "text-left"}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {MODELS.flatMap((m) =>
+                  (m.robustness ?? []).map((r) => {
+                    const deltaColor = r.delta > 10 ? GRADE_COLOR["F"] : r.delta > 3 ? GRADE_COLOR["D"] : r.delta < -3 ? GRADE_COLOR["A"] : "inherit";
+                    return (
+                      <tr key={`${m.alias}-${r.pillar}`} className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="px-4 py-2 text-sm font-medium" style={{ color: FAMILY_COLOR[m.family] }}>{m.displayName}</td>
+                        <td className="px-4 py-2 text-xs text-muted-foreground">{PILLARS[r.pillar]}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs" style={{ color: GRADE_COLOR[gradeFromScore(r.baseline)] }}>{r.baseline.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs" style={{ color: GRADE_COLOR[gradeFromScore(r.pressure)] }}>{r.pressure.toFixed(1)}</td>
+                        <td className="px-4 py-2 text-right font-mono text-xs font-semibold" style={{ color: deltaColor }}>
+                          {r.delta >= 0 ? "+" : ""}{r.delta.toFixed(1)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* ── Per-pillar rankings ── */}
         <section>
           <h2 className="text-xl font-semibold tracking-tight mb-1">Per-Pillar Rankings</h2>
           <p className="text-sm text-muted-foreground mb-5">All models ranked on each pillar (average across modes).</p>
@@ -71,9 +158,7 @@ export default function DataPage() {
                     <div className="text-sm font-semibold text-foreground mt-0.5">{PILLARS[p].replace(/^P\d+: /, "")}</div>
                   </div>
                   <div className="p-3 space-y-2">
-                    {rows.length === 0 && (
-                      <p className="text-xs text-muted-foreground px-1">No data</p>
-                    )}
+                    {rows.length === 0 && <p className="text-xs text-muted-foreground px-1">No data</p>}
                     {rows.map((r, i) => {
                       const g = gradeFromScore(r.score ?? 0);
                       return (
@@ -90,52 +175,6 @@ export default function DataPage() {
                 </div>
               );
             })}
-          </div>
-        </section>
-
-        {/* ── Mode comparison ── */}
-        <section>
-          <h2 className="text-xl font-semibold tracking-tight mb-1">Baseline vs. Pressure</h2>
-          <p className="text-sm text-muted-foreground mb-5">
-            Score delta when moving from baseline to pressure mode. Negative = degradation under time pressure.
-          </p>
-          <div className="border border-border bg-card rounded-md overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/40">
-                  <th className="text-left px-4 py-2.5 text-muted-foreground font-medium text-xs">Model</th>
-                  <th className="text-left px-4 py-2.5 text-muted-foreground font-medium text-xs">Pillar</th>
-                  <th className="text-right px-4 py-2.5 text-muted-foreground font-medium text-xs">Baseline</th>
-                  <th className="text-right px-4 py-2.5 text-muted-foreground font-medium text-xs">Pressure</th>
-                  <th className="text-right px-4 py-2.5 text-muted-foreground font-medium text-xs">Δ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {MODELS.flatMap((m) => {
-                  const pairs: { pillar: PillarKey; baseline: number; pressure: number }[] = [];
-                  for (const p of pillars) {
-                    const b = m.runs.find((r) => r.mode === "baseline" && r.pillar === p);
-                    const pr = m.runs.find((r) => r.mode === "pressure" && r.pillar === p);
-                    if (b && pr) pairs.push({ pillar: p, baseline: b.score, pressure: pr.score });
-                  }
-                  return pairs.map(({ pillar, baseline, pressure }) => {
-                    const delta = pressure - baseline;
-                    return (
-                      <tr key={`${m.alias}-${pillar}`} className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-2 text-sm font-medium" style={{ color: FAMILY_COLOR[m.family] }}>{m.displayName}</td>
-                        <td className="px-4 py-2 text-xs text-muted-foreground">{PILLARS[pillar]}</td>
-                        <td className="px-4 py-2 text-right font-mono text-xs" style={{ color: GRADE_COLOR[gradeFromScore(baseline)] }}>{baseline.toFixed(1)}</td>
-                        <td className="px-4 py-2 text-right font-mono text-xs" style={{ color: GRADE_COLOR[gradeFromScore(pressure)] }}>{pressure.toFixed(1)}</td>
-                        <td className={`px-4 py-2 text-right font-mono text-xs font-semibold ${delta >= 0 ? "" : ""}`}
-                          style={{ color: delta >= 0 ? GRADE_COLOR["A"] : GRADE_COLOR["F"] }}>
-                          {delta >= 0 ? "+" : ""}{delta.toFixed(1)}
-                        </td>
-                      </tr>
-                    );
-                  });
-                })}
-              </tbody>
-            </table>
           </div>
         </section>
 
@@ -177,15 +216,14 @@ export default function DataPage() {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-muted-foreground mt-3">
-            Score / 100 tokens = composite score ÷ avg tokens × 100. Higher is better.
-          </p>
         </section>
 
         {/* ── Run coverage ── */}
         <section>
           <h2 className="text-xl font-semibold tracking-tight mb-1">Run Coverage</h2>
-          <p className="text-sm text-muted-foreground mb-5">Which pillars and modes have been run for each model.</p>
+          <p className="text-sm text-muted-foreground mb-5">
+            Which pillars and modes have been run. Coverage ratio = runs completed / 18 required cells.
+          </p>
           <div className="border border-border bg-card rounded-md overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -196,28 +234,34 @@ export default function DataPage() {
                       {p.split("_")[0].toUpperCase()}
                     </th>
                   ))}
-                  <th className="text-right px-4 py-2.5 text-muted-foreground font-medium text-xs">Total runs</th>
+                  <th className="text-right px-4 py-2.5 text-muted-foreground font-medium text-xs">Coverage</th>
                 </tr>
               </thead>
               <tbody>
-                {MODELS.map((m) => (
-                  <tr key={m.alias} className="border-b border-border/40 last:border-0">
-                    <td className="px-4 py-2.5 text-sm font-medium" style={{ color: FAMILY_COLOR[m.family] }}>{m.displayName}</td>
-                    {pillars.map((p) => {
-                      const modes = m.runs.filter((r) => r.pillar === p).map((r) => r.mode[0].toUpperCase());
-                      return (
-                        <td key={p} className="px-3 py-2.5 text-center font-mono text-xs text-muted-foreground">
-                          {modes.length ? modes.join(" ") : <span className="opacity-30">—</span>}
-                        </td>
-                      );
-                    })}
-                    <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{m.runs.length}</td>
-                  </tr>
-                ))}
+                {MODELS.map((m) => {
+                  const pct = Math.round((m.coverageRatio ?? 0) * 100);
+                  const coverageColor = pct >= 80 ? GRADE_COLOR["A"] : pct >= 50 ? GRADE_COLOR["C"] : GRADE_COLOR["F"];
+                  return (
+                    <tr key={m.alias} className="border-b border-border/40 last:border-0">
+                      <td className="px-4 py-2.5 text-sm font-medium" style={{ color: FAMILY_COLOR[m.family] }}>{m.displayName}</td>
+                      {pillars.map((p) => {
+                        const modes = m.runs.filter((r) => r.pillar === p).map((r) => r.mode[0].toUpperCase());
+                        return (
+                          <td key={p} className="px-3 py-2.5 text-center font-mono text-xs text-muted-foreground">
+                            {modes.length ? modes.join(" ") : <span className="opacity-30">—</span>}
+                          </td>
+                        );
+                      })}
+                      <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold" style={{ color: coverageColor }}>
+                        {pct}%
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-muted-foreground mt-3">B = baseline · P = pressure · A = adversarial</p>
+          <p className="text-xs text-muted-foreground mt-3">B = baseline · P = pressure · A = adversarial · Coverage = runs / 18 required cells</p>
         </section>
 
       </div>

@@ -506,6 +506,48 @@ def get_judge_result(
     ).fetchone()
 
 
+def upsert_run_manifest(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    model_alias: str,
+    model_snapshot_json: str,
+    scenario_set_version: str,
+    scenario_set_hash: str,
+    seed: int | None,
+    timestamp: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO run_manifests (
+            run_id, model_alias, model_snapshot_json,
+            scenario_set_version, scenario_set_hash, seed, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            run_id,
+            model_alias,
+            model_snapshot_json,
+            scenario_set_version,
+            scenario_set_hash,
+            seed,
+            timestamp,
+        ),
+    )
+    conn.commit()
+
+
+def get_run_manifest(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM run_manifests WHERE run_id = ?;",
+        (run_id,),
+    ).fetchone()
+
+
 def upsert_judge_result(
     conn: sqlite3.Connection,
     *,
