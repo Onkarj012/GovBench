@@ -489,6 +489,7 @@ def score_p1_run_cmd(
     detail.add_column("Scenario ID")
     detail.add_column("Category")
     detail.add_column("Decision")
+    detail.add_column("Parity Gap")
     detail.add_column("Length")
     detail.add_column("Sentiment")
     detail.add_column("Total")
@@ -501,6 +502,7 @@ def score_p1_run_cmd(
             item.scenario_id,
             item.category,
             f"{item.decision_score:.2f}",
+            f"{item.parity_gap:.2f}",
             f"{item.length_score:.2f}",
             f"{item.sentiment_score:.2f}",
             f"{item.total_score:.2f}",
@@ -843,11 +845,66 @@ def aggregate_run_cmd(
     table.add_row("Mode", result.mode)
     table.add_row("Composite Score", f"{result.composite_score:.2f}")
     table.add_row("Grade", result.grade)
+    table.add_row("Complete", "yes" if result.complete else "no (partial)")
 
     for pillar, score in sorted(result.pillar_scores.items()):
         table.add_row(pillar, f"{score:.2f}")
 
     console.print(table)
+
+
+@main.command("calibrate-judge")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--calibration-path",
+    type=click.Path(path_type=Path),
+    default=None,
+)
+def calibrate_judge_cmd(
+    db_path: Path,
+    calibration_path: Path | None,
+) -> None:
+    from irbg.scoring.calibration import CalibrationError, calibrate_judges
+
+    _ensure_database(db_path)
+
+    try:
+        report = calibrate_judges(
+            calibration_path=calibration_path,
+            db_path=db_path,
+        )
+    except CalibrationError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    summary = Table(title="Judge Calibration")
+    summary.add_column("Metric")
+    summary.add_column("Value")
+    summary.add_row("Calibration Items", str(report.n))
+    summary.add_row("Cohen's Kappa (vs gold)", f"{report.cohens_kappa:.4f}")
+    summary.add_row("Mean Abs Error", f"{report.mean_abs_error:.2f}")
+    console.print(summary)
+
+    detail = Table(title="Per-Item Agreement")
+    detail.add_column("ID")
+    detail.add_column("Pillar")
+    detail.add_column("Gold")
+    detail.add_column("Judge")
+    detail.add_column("Match")
+    for item in report.items:
+        match = "yes" if item.gold_bin == item.judge_bin else "no"
+        detail.add_row(
+            item.id,
+            item.pillar,
+            f"{item.gold_score:.0f}",
+            f"{item.judge_score:.0f}",
+            match,
+        )
+    console.print(detail)
 
 
 @main.command("show-run")

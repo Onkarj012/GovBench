@@ -444,3 +444,57 @@ def get_irbg_score(
         """,
         (run_id,),
     ).fetchone()
+
+
+def get_judge_result(
+    conn: sqlite3.Connection,
+    *,
+    pillar: str,
+    judge_model: str,
+    content_hash: str,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT score, reasoning, flags_json
+        FROM judge_results
+        WHERE pillar = ? AND judge_model = ? AND content_hash = ?;
+        """,
+        (pillar, judge_model, content_hash),
+    ).fetchone()
+
+
+def upsert_judge_result(
+    conn: sqlite3.Connection,
+    *,
+    pillar: str,
+    judge_model: str,
+    content_hash: str,
+    score: float,
+    reasoning: str,
+    flags_json: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO judge_results (
+            id, pillar, judge_model, content_hash,
+            score, reasoning, flags_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(pillar, judge_model, content_hash) DO UPDATE SET
+            score = excluded.score,
+            reasoning = excluded.reasoning,
+            flags_json = excluded.flags_json,
+            created_at = excluded.created_at;
+        """,
+        (
+            new_id(),
+            pillar,
+            judge_model,
+            content_hash,
+            score,
+            reasoning,
+            flags_json,
+            now_utc_iso(),
+        ),
+    )
+    conn.commit()

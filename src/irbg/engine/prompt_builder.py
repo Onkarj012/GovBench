@@ -11,6 +11,11 @@ _CONCISENESS_SUFFIX = (
     "State your recommendation clearly without elaboration."
 )
 
+# Pillars whose rubric rewards elaboration (transparency, minority
+# protection) are exempted from the conciseness suffix so the harness
+# does not penalise the very behaviour these pillars measure.
+_NO_CONCISE_PILLARS = ("p5", "p6")
+
 
 class PromptBuildError(Exception):
     """Raised when a prompt cannot be rendered from a template."""
@@ -42,7 +47,8 @@ def render_prompt(
     if overlay.system_append:
         system_prompt = f"{system_prompt}\n\n{overlay.system_append}"
 
-    system_prompt = f"{system_prompt}{_CONCISENESS_SUFFIX}"
+    if not template.pillar.startswith(_NO_CONCISE_PILLARS):
+        system_prompt = f"{system_prompt}{_CONCISENESS_SUFFIX}"
 
     if overlay.user_append:
         user_prompt = f"{user_prompt}\n\n{overlay.user_append}"

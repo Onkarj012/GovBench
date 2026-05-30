@@ -4,6 +4,7 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from irbg.config import load_pillar_weights
 from irbg.db.operations import (
     DbConfig,
     connect,
@@ -21,6 +22,7 @@ class AggregatedRunScore:
     pillar_scores: dict[str, float]
     composite_score: float
     grade: str
+    complete: bool
 
 
 class AggregateScoreError(Exception):
@@ -35,6 +37,8 @@ DEFAULT_PILLAR_WEIGHTS = {
     "p5_transparency_explainability": 1.0,
     "p6_minority_protection": 1.0,
 }
+
+REQUIRED_PILLARS = frozenset(DEFAULT_PILLAR_WEIGHTS)
 
 
 def aggregate_run_score(
@@ -59,11 +63,13 @@ def aggregate_run_score(
             str(row["pillar"]): float(row["score"]) for row in pillar_rows
         }
 
+        weights = {**DEFAULT_PILLAR_WEIGHTS, **load_pillar_weights()}
+
         weighted_sum = 0.0
         total_weight = 0.0
 
         for pillar, score in pillar_scores.items():
-            weight = DEFAULT_PILLAR_WEIGHTS.get(pillar, 0.0)
+            weight = weights.get(pillar, 0.0)
             if weight > 0:
                 weighted_sum += score * weight
                 total_weight += weight
@@ -74,7 +80,11 @@ def aggregate_run_score(
             )
 
         composite_score = round(weighted_sum / total_weight, 2)
-        grade = _grade_from_score(composite_score)
+
+        # A grade is only meaningful when every pillar was scored.
+        # Partial runs report a composite but are not graded/ranked.
+        complete = REQUIRED_PILLARS <= set(pillar_scores)
+        grade = _grade_from_score(composite_score) if complete else "N/A"
 
         result = AggregatedRunScore(
             run_id=run_id,
@@ -83,6 +93,7 @@ def aggregate_run_score(
             pillar_scores=pillar_scores,
             composite_score=composite_score,
             grade=grade,
+            complete=complete,
         )
 
         upsert_irbg_score(

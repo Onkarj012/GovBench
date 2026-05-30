@@ -54,21 +54,29 @@ def run_benchmark():
             summary[model][mode] = {}
             run_ids: dict[str, str] = {}
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"MODEL: {model} | MODE: {mode}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             # Phase 1: Run all pillar folders
             for pillar, folder in PILLAR_FOLDERS.items():
                 print(f"\n--- Running {pillar} ({folder}) ---")
-                rc, stdout, stderr = run_cmd([
-                    sys.executable, "-m", "irbg.cli",
-                    "run-template-folder",
-                    "--model", model,
-                    "--scenario-folder", folder,
-                    "--mode", mode,
-                    "--db-path", str(DB_PATH),
-                ])
+                rc, stdout, stderr = run_cmd(
+                    [
+                        sys.executable,
+                        "-m",
+                        "irbg.cli",
+                        "run-template-folder",
+                        "--model",
+                        model,
+                        "--scenario-folder",
+                        folder,
+                        "--mode",
+                        mode,
+                        "--db-path",
+                        str(DB_PATH),
+                    ]
+                )
 
                 if rc != 0:
                     print(f"  FAILED: {stderr.strip()}")
@@ -89,12 +97,18 @@ def run_benchmark():
                     continue
                 print(f"\n--- Scoring {pillar} (run {run_id[:8]}...) ---")
                 score_cmd = SCORING_COMMANDS[pillar]
-                rc, stdout, stderr = run_cmd([
-                    sys.executable, "-m", "irbg.cli",
-                    score_cmd,
-                    "--run-id", run_id,
-                    "--db-path", str(DB_PATH),
-                ])
+                rc, stdout, stderr = run_cmd(
+                    [
+                        sys.executable,
+                        "-m",
+                        "irbg.cli",
+                        score_cmd,
+                        "--run-id",
+                        run_id,
+                        "--db-path",
+                        str(DB_PATH),
+                    ]
+                )
 
                 if rc != 0:
                     print(f"  SCORE FAILED: {stderr.strip()}")
@@ -113,27 +127,40 @@ def run_benchmark():
                 if run_id == "FAILED":
                     continue
                 try:
-                    run_cmd([
-                        sys.executable, "-m", "irbg.cli",
-                        "aggregate-run",
-                        "--run-id", run_id,
-                        "--db-path", str(DB_PATH),
-                    ])
+                    run_cmd(
+                        [
+                            sys.executable,
+                            "-m",
+                            "irbg.cli",
+                            "aggregate-run",
+                            "--run-id",
+                            run_id,
+                            "--db-path",
+                            str(DB_PATH),
+                        ]
+                    )
 
-                    run_cmd([
-                        sys.executable, "-m", "irbg.cli",
-                        "report-run",
-                        "--run-id", run_id,
-                        "--db-path", str(DB_PATH),
-                        "--output-dir", str(REPORTS_DIR),
-                    ])
+                    run_cmd(
+                        [
+                            sys.executable,
+                            "-m",
+                            "irbg.cli",
+                            "report-run",
+                            "--run-id",
+                            run_id,
+                            "--db-path",
+                            str(DB_PATH),
+                            "--output-dir",
+                            str(REPORTS_DIR),
+                        ]
+                    )
                 except Exception:
                     pass
 
     elapsed = time.time() - start_time
-    print(f"\n\n{'='*60}")
+    print(f"\n\n{'=' * 60}")
     print(f"BENCHMARK COMPLETE in {elapsed:.0f}s")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     print("\n## RESULTS SUMMARY\n")
     for model in MODELS:

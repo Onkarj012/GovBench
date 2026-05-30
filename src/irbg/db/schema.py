@@ -111,4 +111,20 @@ def create_tables(conn: sqlite3.Connection) -> None:
         """
     )
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS judge_results (
+            id TEXT PRIMARY KEY,
+            pillar TEXT NOT NULL,
+            judge_model TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            score REAL NOT NULL,
+            reasoning TEXT,
+            flags_json TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE (pillar, judge_model, content_hash)
+        );
+        """
+    )
+
     conn.commit()

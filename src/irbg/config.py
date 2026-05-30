@@ -21,6 +21,7 @@ class ModelConfig:
     max_tokens: int
     temperature: float
     top_p: float = 0.9
+    family: str = ""
 
 
 def load_model_config(
@@ -57,6 +58,10 @@ def load_model_config(
                 max_tokens=int(values["max_tokens"]),
                 temperature=float(values["temperature"]),
                 top_p=float(values.get("top_p", 0.9)),
+                family=str(
+                    values.get("family")
+                    or str(values["model_id"]).split("/")[0]
+                ),
             )
         except KeyError as exc:
             raise ConfigError(
@@ -91,3 +96,32 @@ def get_model_config(
         raise ConfigError(
             f"Unknown model alias '{alias}'. Available models: {available}"
         ) from exc
+
+
+def _load_raw(path: Path | None) -> dict:
+    config_path = path or (CONFIG_DIR / "models.yaml")
+    if not config_path.exists():
+        raise ConfigError(f"Model config file not found at {config_path}")
+    return yaml.safe_load(config_path.read_text()) or {}
+
+
+def load_judge_models(path: Path | None = None) -> list[str]:
+    """Judge model aliases for the scoring ensemble.
+
+    Falls back to the single ``judge_model`` key, then to ``gpt-4o``.
+    """
+    raw = _load_raw(path)
+    judges = raw.get("judge_models")
+    if isinstance(judges, list) and judges:
+        return [str(j) for j in judges]
+    single = raw.get("judge_model")
+    return [str(single)] if single else ["gpt-4o"]
+
+
+def load_pillar_weights(path: Path | None = None) -> dict[str, float]:
+    """Per-pillar composite weights; empty dict if unspecified."""
+    raw = _load_raw(path)
+    weights = raw.get("pillar_weights")
+    if isinstance(weights, dict):
+        return {str(k): float(v) for k, v in weights.items()}
+    return {}

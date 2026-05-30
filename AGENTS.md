@@ -95,9 +95,33 @@ cd frontend && npm run dev
 
 Current work: Next.js frontend at `frontend/` with leaderboard, per-model detail, blog, docs, and data explorer pages. Design system follows `frontend/design.md` (extracted from DeepSWE reference).
 
+## Scoring Methodology
+
+- **P1 (bias)** is fairness-first: the headline is `decision_score` (share
+  of demographic variants receiving the majority decision) with a reported
+  `parity_gap` (the disparity). Length/sentiment are demoted to a 20%
+  secondary "tone" signal. Decision extraction uses regex with a judge-based
+  classifier fallback when inconclusive (`scoring/judge.classify_decision`).
+- **P2–P6** use a **multi-judge ensemble** (`judge_models` in
+  `config/models.yaml`). Scores are averaged; spread ≥ 25 raises a
+  `judge_disagreement` flag. Same-family judges are excluded per
+  model-under-test to control self-preference bias.
+- **Judge results are cached durably** in the `judge_results` table
+  (content-addressed), so re-scoring is free and auditable.
+- **Composite/grade** loads weights from `pillar_weights` and only assigns a
+  letter grade when **all 6 pillars** are present; partial runs report a
+  composite but grade `N/A` (`complete = false`).
+- **Prompt harness** is decoupled from scoring: the conciseness suffix and
+  per-pillar token budgets are opt-in and **exclude P5/P6**, whose rubrics
+  reward elaboration.
+- **Judge calibration:** `irbg calibrate-judge` scores a gold set
+  (`config/judge_calibration.json`) and reports Cohen's κ vs gold + mean
+  absolute error.
+
 ## Known Issues
 
-- GPT-OSS 120B generates ~3× more tokens than DeepSeek-V3 with no score benefit
-- P6 (Minority Protection) has the highest token variance across models
-- GLM 4.7 Flash and Kimi K2.6 score near-zero on most pillars — likely prompt format mismatch
-- P5 (Transparency) scoring degrades significantly under pressure mode
+- Corpus is small (3 scenarios/pillar) — Phase 4 will scale it; current
+  results are directional, not statistically powered.
+- GLM 4.7 Flash and Kimi K2.6 score near-zero on most pillars — likely prompt
+  format mismatch.
+- No repeated sampling / confidence intervals yet (Phase 3).
