@@ -50,10 +50,10 @@ export default function BlogPage() {
           <div className="mb-10">
             <p className="text-xs font-mono text-muted-foreground tracking-wider uppercase mb-3">May 2026 · v1.0</p>
             <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-4">
-              IRBG: Evaluating AI Governance Readiness
+              GovBench: Evaluating AI Governance Readiness
             </h1>
             <P>
-              IRBG (Institutional Readiness &amp; Bias Benchmark for Governance) is an open benchmark
+              GovBench (Institutional Readiness &amp; Bias Benchmark for Governance) is an open benchmark
               that measures how reliably AI language models behave when deployed in high-stakes
               institutional contexts — bail recommendations, employment disputes, corruption pressure,
               jurisdictional conflicts, and minority-rights cases.
@@ -71,7 +71,7 @@ export default function BlogPage() {
             protection of minority rights.
           </P>
           <P>
-            IRBG fills this gap. It runs models through realistic scenario templates drawn from
+            GovBench fills this gap. It runs models through realistic scenario templates drawn from
             three jurisdictions (US, EU, India), applies demographic variants to detect bias, and
             stress-tests responses under time pressure and adversarial manipulation.
           </P>
@@ -351,9 +351,9 @@ export default function BlogPage() {
 
           {/* Citation */}
           <H2 id="citation">Citation</H2>
-          <P>If you use IRBG in your research, please cite:</P>
+          <P>If you use GovBench in your research, please cite:</P>
           <pre className="bg-card border border-border rounded-md p-4 text-xs font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap">{`@misc{irbg2026,
-  title  = {IRBG: Institutional Readiness \\& Bias Benchmark for Governance},
+  title  = {GovBench: Institutional Readiness \\& Bias Benchmark for Governance},
   year   = {2026},
   url    = {https://github.com/onkarj012/irbg},
   note   = {v1.0}

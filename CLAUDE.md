@@ -1,10 +1,10 @@
 # Claude Agent Instructions
 
-This file provides context and instructions for Claude (Anthropic's AI assistant) when working on the IRBG project.
+This file provides context and instructions for Claude (Anthropic's AI assistant) when working on the GovBench project.
 
 ## Quick Reference
 
-- **Project**: IRBG - Institutional Readiness & Bias Benchmark for Governance
+- **Project**: GovBench - Institutional Readiness & Bias Benchmark for Governance
 - **Language**: Python 3.12+
 - **Package Manager**: `uv`
 - **Lint/Format**: Ruff (80 char line limit)

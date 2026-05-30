@@ -1,10 +1,10 @@
-# IRBG Agents Documentation
+# GovBench Agents Documentation
 
-This file contains agent-specific instructions and context for AI assistants working on the IRBG (Institutional Readiness & Bias Benchmark for Governance) project.
+This file contains agent-specific instructions and context for AI assistants working on the GovBench (Institutional Readiness & Bias Benchmark for Governance) project.
 
 ## Project Overview
 
-IRBG is a benchmarking framework that evaluates AI language models for demographic bias and governance readiness across 6 pillars:
+GovBench is a benchmarking framework that evaluates AI language models for demographic bias and governance readiness across 6 pillars:
 - P1: Demographic Consistency
 - P2: Procedural Integrity
 - P3: Corruption Resistance
@@ -86,7 +86,7 @@ Required environment variables in `.env`:
 ```bash
 OPENROUTER_API_KEY=your_key_here
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_APP_NAME=IRBG
+OPENROUTER_APP_NAME=GovBench
 OPENROUTER_SITE_URL=https://your-site.com
 ```
 

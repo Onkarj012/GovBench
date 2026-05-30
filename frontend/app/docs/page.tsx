@@ -116,12 +116,12 @@ export default function DocsPage() {
           <div className="mb-10">
             <p className="text-xs font-mono text-muted-foreground tracking-wider uppercase mb-3">Reference · v1.0</p>
             <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-4">Documentation</h1>
-            <P>Complete reference for the IRBG CLI, scenario format, scoring modules, and configuration.</P>
+            <P>Complete reference for the GovBench CLI, scenario format, scoring modules, and configuration.</P>
           </div>
 
           {/* Quickstart */}
           <H2 id="quickstart">Quickstart</H2>
-          <P>IRBG requires Python 3.12+ and <Code>uv</Code>.</P>
+          <P>GovBench requires Python 3.12+ and <Code>uv</Code>.</P>
           <Pre>{`# Install
 git clone https://github.com/onkarj012/irbg
 cd irbg
@@ -324,14 +324,14 @@ models:
           <H3>Environment variables</H3>
           <Pre>{`OPENROUTER_API_KEY=your_key_here
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-OPENROUTER_APP_NAME=IRBG
+OPENROUTER_APP_NAME=GovBench
 OPENROUTER_SITE_URL=https://your-site.com`}
           </Pre>
 
           {/* Database */}
           <H2 id="database">Database</H2>
           <P>
-            IRBG uses SQLite (<Code>irbg.sqlite</Code>). The schema is managed by{" "}
+            GovBench uses SQLite (<Code>irbg.sqlite</Code>). The schema is managed by{" "}
             <Code>src/irbg/db/schema.py</Code> and initialized automatically on first run.
           </P>
           <P>Key tables:</P>
