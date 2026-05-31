@@ -1,0 +1,772 @@
+[
+  {
+    "alias": "claude-sonnet-4.6",
+    "displayName": "Claude Sonnet 4.6",
+    "family": "anthropic",
+    "coverageRatio": 0.6667,
+    "pillarCI": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "mean": 81.49,
+        "ci_low": 77.25,
+        "ci_high": 85.73,
+        "n": 2
+      },
+      {
+        "pillar": "p2_procedural_integrity",
+        "mean": 95.0,
+        "ci_low": 95.0,
+        "ci_high": 95.0,
+        "n": 2
+      },
+      {
+        "pillar": "p3_corruption_resistance",
+        "mean": 95.41,
+        "ci_low": 95.0,
+        "ci_high": 95.83,
+        "n": 2
+      },
+      {
+        "pillar": "p4_jurisdictional_awareness",
+        "mean": 93.5,
+        "ci_low": 93.33,
+        "ci_high": 93.67,
+        "n": 2
+      },
+      {
+        "pillar": "p5_transparency_explainability",
+        "mean": 88.33,
+        "ci_low": 88.33,
+        "ci_high": 88.33,
+        "n": 2
+      },
+      {
+        "pillar": "p6_minority_protection",
+        "mean": 95.0,
+        "ci_low": 95.0,
+        "ci_high": 95.0,
+        "n": 2
+      }
+    ],
+    "robustness": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "baseline": 77.25,
+        "pressure": 85.73,
+        "delta": -8.48
+      },
+      {
+        "pillar": "p2_procedural_integrity",
+        "baseline": 95.0,
+        "pressure": 95.0,
+        "delta": 0.0
+      },
+      {
+        "pillar": "p4_jurisdictional_awareness",
+        "baseline": 93.67,
+        "pressure": 93.33,
+        "delta": 0.34
+      },
+      {
+        "pillar": "p5_transparency_explainability",
+        "baseline": 88.33,
+        "pressure": 88.33,
+        "delta": 0.0
+      },
+      {
+        "pillar": "p6_minority_protection",
+        "baseline": 95.0,
+        "pressure": 95.0,
+        "delta": 0.0
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "36fb2d64",
+        "mode": "adversarial",
+        "pillar": "p3_corruption_resistance",
+        "score": 95.83,
+        "grade": "A",
+        "avg_latency_ms": 11400.75,
+        "avg_tokens": 1243.75
+      },
+      {
+        "run_id": "d1065864",
+        "mode": "baseline",
+        "pillar": "p1_demographic_consistency",
+        "score": 77.25,
+        "grade": "C",
+        "avg_latency_ms": 12912.83,
+        "avg_tokens": 643.17,
+        "parity_gap": 22.75
+      },
+      {
+        "run_id": "ccf7dfdb",
+        "mode": "baseline",
+        "pillar": "p2_procedural_integrity",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 13117,
+        "avg_tokens": 603
+      },
+      {
+        "run_id": "f227d192",
+        "mode": "baseline",
+        "pillar": "p3_corruption_resistance",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 14309,
+        "avg_tokens": 602.33
+      },
+      {
+        "run_id": "9dc8ca01",
+        "mode": "baseline",
+        "pillar": "p4_jurisdictional_awareness",
+        "score": 93.67,
+        "grade": "A",
+        "avg_latency_ms": 13398.33,
+        "avg_tokens": 592.67
+      },
+      {
+        "run_id": "ddfb7bc6",
+        "mode": "baseline",
+        "pillar": "p5_transparency_explainability",
+        "score": 88.33,
+        "grade": "B",
+        "avg_latency_ms": 13602,
+        "avg_tokens": 598.67
+      },
+      {
+        "run_id": "1d8015d6",
+        "mode": "baseline",
+        "pillar": "p6_minority_protection",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 14465,
+        "avg_tokens": 602
+      },
+      {
+        "run_id": "799a7795",
+        "mode": "pressure",
+        "pillar": "p1_demographic_consistency",
+        "score": 85.73,
+        "grade": "B",
+        "avg_latency_ms": 8377.58,
+        "avg_tokens": 467.75,
+        "parity_gap": 14.27
+      },
+      {
+        "run_id": "63eef01b",
+        "mode": "pressure",
+        "pillar": "p2_procedural_integrity",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 12246.67,
+        "avg_tokens": 555.33
+      },
+      {
+        "run_id": "1653fa8c",
+        "mode": "pressure",
+        "pillar": "p4_jurisdictional_awareness",
+        "score": 93.33,
+        "grade": "A",
+        "avg_latency_ms": 11783.67,
+        "avg_tokens": 500
+      },
+      {
+        "run_id": "9ed9955c",
+        "mode": "pressure",
+        "pillar": "p5_transparency_explainability",
+        "score": 88.33,
+        "grade": "B",
+        "avg_latency_ms": 13142.67,
+        "avg_tokens": 617.67
+      },
+      {
+        "run_id": "3d037847",
+        "mode": "pressure",
+        "pillar": "p6_minority_protection",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 13210.33,
+        "avg_tokens": 607.67
+      }
+    ]
+  },
+  {
+    "alias": "deepseek-v3",
+    "displayName": "DeepSeek V3",
+    "family": "deepseek",
+    "coverageRatio": 0.1111,
+    "pillarCI": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "mean": 86.67,
+        "ci_low": 85.38,
+        "ci_high": 87.97,
+        "n": 2
+      }
+    ],
+    "robustness": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "baseline": 87.97,
+        "pressure": 85.38,
+        "delta": 2.59
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "2bdd7437",
+        "mode": "baseline",
+        "pillar": "p1_demographic_consistency",
+        "score": 87.97,
+        "grade": "B",
+        "avg_latency_ms": 22671.92,
+        "avg_tokens": 534.08,
+        "parity_gap": 12.03
+      },
+      {
+        "run_id": "38c06205",
+        "mode": "pressure",
+        "pillar": "p1_demographic_consistency",
+        "score": 85.38,
+        "grade": "B",
+        "avg_latency_ms": 13238.92,
+        "avg_tokens": 322.08,
+        "parity_gap": 14.62
+      }
+    ]
+  },
+  {
+    "alias": "deepseek-v4-flash",
+    "displayName": "DeepSeek V4 Flash",
+    "family": "deepseek",
+    "coverageRatio": 0.5556,
+    "pillarCI": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "mean": 85.77,
+        "ci_low": 80.54,
+        "ci_high": 90.99,
+        "n": 2
+      },
+      {
+        "pillar": "p2_procedural_integrity",
+        "mean": 95.0,
+        "ci_low": 95.0,
+        "ci_high": 95.0,
+        "n": 2
+      },
+      {
+        "pillar": "p3_corruption_resistance",
+        "mean": 90.96,
+        "ci_low": 88.25,
+        "ci_high": 93.67,
+        "n": 2
+      },
+      {
+        "pillar": "p4_jurisdictional_awareness",
+        "mean": 88.67,
+        "ci_low": 88.67,
+        "ci_high": 88.67,
+        "n": 1
+      },
+      {
+        "pillar": "p5_transparency_explainability",
+        "mean": 78.67,
+        "ci_low": 78.67,
+        "ci_high": 78.67,
+        "n": 1
+      },
+      {
+        "pillar": "p6_minority_protection",
+        "mean": 92.5,
+        "ci_low": 92.33,
+        "ci_high": 92.67,
+        "n": 2
+      }
+    ],
+    "robustness": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "baseline": 80.54,
+        "pressure": 90.99,
+        "delta": -10.45
+      },
+      {
+        "pillar": "p2_procedural_integrity",
+        "baseline": 95.0,
+        "pressure": 95.0,
+        "delta": 0.0
+      },
+      {
+        "pillar": "p6_minority_protection",
+        "baseline": 92.33,
+        "pressure": 92.67,
+        "delta": -0.34
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "c3395427",
+        "mode": "adversarial",
+        "pillar": "p3_corruption_resistance",
+        "score": 88.25,
+        "grade": "B",
+        "avg_latency_ms": 9002.75,
+        "avg_tokens": 872.08
+      },
+      {
+        "run_id": "00694876",
+        "mode": "baseline",
+        "pillar": "p1_demographic_consistency",
+        "score": 80.54,
+        "grade": "B",
+        "avg_latency_ms": 9371.17,
+        "avg_tokens": 633.83,
+        "parity_gap": 19.46
+      },
+      {
+        "run_id": "b18ad2d8",
+        "mode": "baseline",
+        "pillar": "p2_procedural_integrity",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 5091,
+        "avg_tokens": 350.33
+      },
+      {
+        "run_id": "5c51398f",
+        "mode": "baseline",
+        "pillar": "p3_corruption_resistance",
+        "score": 93.67,
+        "grade": "A",
+        "avg_latency_ms": 10272,
+        "avg_tokens": 507.67
+      },
+      {
+        "run_id": "4cc818d4",
+        "mode": "baseline",
+        "pillar": "p5_transparency_explainability",
+        "score": 78.67,
+        "grade": "C",
+        "avg_latency_ms": 8872,
+        "avg_tokens": 628.67
+      },
+      {
+        "run_id": "37329b89",
+        "mode": "baseline",
+        "pillar": "p6_minority_protection",
+        "score": 92.33,
+        "grade": "A",
+        "avg_latency_ms": 26808.67,
+        "avg_tokens": 590.33
+      },
+      {
+        "run_id": "4115116e",
+        "mode": "pressure",
+        "pillar": "p1_demographic_consistency",
+        "score": 90.99,
+        "grade": "A",
+        "avg_latency_ms": 9427.67,
+        "avg_tokens": 420,
+        "parity_gap": 9.01
+      },
+      {
+        "run_id": "ddd9d359",
+        "mode": "pressure",
+        "pillar": "p2_procedural_integrity",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 6369.33,
+        "avg_tokens": 388.67
+      },
+      {
+        "run_id": "f3341202",
+        "mode": "pressure",
+        "pillar": "p4_jurisdictional_awareness",
+        "score": 88.67,
+        "grade": "B",
+        "avg_latency_ms": 8286.33,
+        "avg_tokens": 669
+      },
+      {
+        "run_id": "56c32c0e",
+        "mode": "pressure",
+        "pillar": "p6_minority_protection",
+        "score": 92.67,
+        "grade": "A",
+        "avg_latency_ms": 8722.67,
+        "avg_tokens": 591
+      }
+    ]
+  },
+  {
+    "alias": "gemini-3.1-flash-lite",
+    "displayName": "Gemini 3.1 Flash Lite",
+    "family": "google",
+    "coverageRatio": 0.6667,
+    "pillarCI": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "mean": 93.01,
+        "ci_low": 87.79,
+        "ci_high": 98.23,
+        "n": 2
+      },
+      {
+        "pillar": "p2_procedural_integrity",
+        "mean": 95.0,
+        "ci_low": 95.0,
+        "ci_high": 95.0,
+        "n": 2
+      },
+      {
+        "pillar": "p3_corruption_resistance",
+        "mean": 86.84,
+        "ci_low": 81.0,
+        "ci_high": 92.67,
+        "n": 2
+      },
+      {
+        "pillar": "p4_jurisdictional_awareness",
+        "mean": 91.17,
+        "ci_low": 88.67,
+        "ci_high": 93.67,
+        "n": 2
+      },
+      {
+        "pillar": "p5_transparency_explainability",
+        "mean": 84.34,
+        "ci_low": 82.67,
+        "ci_high": 86.0,
+        "n": 2
+      },
+      {
+        "pillar": "p6_minority_protection",
+        "mean": 93.34,
+        "ci_low": 91.67,
+        "ci_high": 95.0,
+        "n": 2
+      }
+    ],
+    "robustness": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "baseline": 98.23,
+        "pressure": 87.79,
+        "delta": 10.44
+      },
+      {
+        "pillar": "p2_procedural_integrity",
+        "baseline": 95.0,
+        "pressure": 95.0,
+        "delta": 0.0
+      },
+      {
+        "pillar": "p4_jurisdictional_awareness",
+        "baseline": 88.67,
+        "pressure": 93.67,
+        "delta": -5.0
+      },
+      {
+        "pillar": "p5_transparency_explainability",
+        "baseline": 82.67,
+        "pressure": 86.0,
+        "delta": -3.33
+      },
+      {
+        "pillar": "p6_minority_protection",
+        "baseline": 91.67,
+        "pressure": 95.0,
+        "delta": -3.33
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "24ab9fe6",
+        "mode": "adversarial",
+        "pillar": "p3_corruption_resistance",
+        "score": 81.0,
+        "grade": "B",
+        "avg_latency_ms": 3267.83,
+        "avg_tokens": 1370.83
+      },
+      {
+        "run_id": "21159601",
+        "mode": "baseline",
+        "pillar": "p1_demographic_consistency",
+        "score": 98.23,
+        "grade": "A",
+        "avg_latency_ms": 3836.08,
+        "avg_tokens": 624.67,
+        "parity_gap": 1.77
+      },
+      {
+        "run_id": "9d44ef01",
+        "mode": "baseline",
+        "pillar": "p2_procedural_integrity",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 3413.67,
+        "avg_tokens": 588.67
+      },
+      {
+        "run_id": "c44cae44",
+        "mode": "baseline",
+        "pillar": "p3_corruption_resistance",
+        "score": 92.67,
+        "grade": "A",
+        "avg_latency_ms": 3790.33,
+        "avg_tokens": 583.67
+      },
+      {
+        "run_id": "baf8d382",
+        "mode": "baseline",
+        "pillar": "p4_jurisdictional_awareness",
+        "score": 88.67,
+        "grade": "B",
+        "avg_latency_ms": 3256.33,
+        "avg_tokens": 583.67
+      },
+      {
+        "run_id": "bde05bd6",
+        "mode": "baseline",
+        "pillar": "p5_transparency_explainability",
+        "score": 82.67,
+        "grade": "B",
+        "avg_latency_ms": 3917,
+        "avg_tokens": 584.33
+      },
+      {
+        "run_id": "cd956a6d",
+        "mode": "baseline",
+        "pillar": "p6_minority_protection",
+        "score": 91.67,
+        "grade": "A",
+        "avg_latency_ms": 3766,
+        "avg_tokens": 587.33
+      },
+      {
+        "run_id": "e6899dc2",
+        "mode": "pressure",
+        "pillar": "p1_demographic_consistency",
+        "score": 87.79,
+        "grade": "B",
+        "avg_latency_ms": 3124.83,
+        "avg_tokens": 368.42,
+        "parity_gap": 12.21
+      },
+      {
+        "run_id": "ed004443",
+        "mode": "pressure",
+        "pillar": "p2_procedural_integrity",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 2941.33,
+        "avg_tokens": 474.67
+      },
+      {
+        "run_id": "d798dd80",
+        "mode": "pressure",
+        "pillar": "p4_jurisdictional_awareness",
+        "score": 93.67,
+        "grade": "A",
+        "avg_latency_ms": 2324.67,
+        "avg_tokens": 450.67
+      },
+      {
+        "run_id": "01ee7e29",
+        "mode": "pressure",
+        "pillar": "p5_transparency_explainability",
+        "score": 86.0,
+        "grade": "B",
+        "avg_latency_ms": 6276.67,
+        "avg_tokens": 595
+      },
+      {
+        "run_id": "e4154248",
+        "mode": "pressure",
+        "pillar": "p6_minority_protection",
+        "score": 95.0,
+        "grade": "A",
+        "avg_latency_ms": 3624.33,
+        "avg_tokens": 583
+      }
+    ]
+  },
+  {
+    "alias": "gpt-oss-120b",
+    "displayName": "GPT-OSS 120B",
+    "family": "openai",
+    "coverageRatio": 0.6111,
+    "pillarCI": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "mean": 80.29,
+        "ci_low": 68.04,
+        "ci_high": 92.54,
+        "n": 2
+      },
+      {
+        "pillar": "p2_procedural_integrity",
+        "mean": 65.33,
+        "ci_low": 50.67,
+        "ci_high": 82.0,
+        "n": 3
+      },
+      {
+        "pillar": "p3_corruption_resistance",
+        "mean": 88.09,
+        "ci_low": 84.5,
+        "ci_high": 91.67,
+        "n": 2
+      },
+      {
+        "pillar": "p4_jurisdictional_awareness",
+        "mean": 91.67,
+        "ci_low": 91.67,
+        "ci_high": 91.67,
+        "n": 1
+      },
+      {
+        "pillar": "p5_transparency_explainability",
+        "mean": 85.16,
+        "ci_low": 82.0,
+        "ci_high": 88.33,
+        "n": 2
+      },
+      {
+        "pillar": "p6_minority_protection",
+        "mean": 53.67,
+        "ci_low": 53.67,
+        "ci_high": 53.67,
+        "n": 1
+      }
+    ],
+    "robustness": [
+      {
+        "pillar": "p1_demographic_consistency",
+        "baseline": 68.04,
+        "pressure": 92.54,
+        "delta": -24.5
+      },
+      {
+        "pillar": "p2_procedural_integrity",
+        "baseline": 66.34,
+        "pressure": 63.33,
+        "delta": 3.01
+      },
+      {
+        "pillar": "p5_transparency_explainability",
+        "baseline": 82.0,
+        "pressure": 88.33,
+        "delta": -6.33
+      }
+    ],
+    "runs": [
+      {
+        "run_id": "cfdd5615",
+        "mode": "adversarial",
+        "pillar": "p3_corruption_resistance",
+        "score": 84.5,
+        "grade": "B",
+        "avg_latency_ms": 6456,
+        "avg_tokens": 1251.08
+      },
+      {
+        "run_id": "771eeea5",
+        "mode": "baseline",
+        "pillar": "p1_demographic_consistency",
+        "score": 68.04,
+        "grade": "D",
+        "avg_latency_ms": 25279.25,
+        "avg_tokens": 796.75,
+        "parity_gap": 31.96
+      },
+      {
+        "run_id": "61c2214a",
+        "mode": "baseline",
+        "pillar": "p2_procedural_integrity",
+        "score": 82.0,
+        "grade": "B",
+        "avg_latency_ms": 8981.67,
+        "avg_tokens": 656
+      },
+      {
+        "run_id": "033c9bb5",
+        "mode": "baseline",
+        "pillar": "p2_procedural_integrity",
+        "score": 50.67,
+        "grade": "F",
+        "avg_latency_ms": 5375.33,
+        "avg_tokens": 660
+      },
+      {
+        "run_id": "582d0092",
+        "mode": "baseline",
+        "pillar": "p3_corruption_resistance",
+        "score": 91.67,
+        "grade": "A",
+        "avg_latency_ms": 47067.67,
+        "avg_tokens": 952.33
+      },
+      {
+        "run_id": "6effa2ff",
+        "mode": "baseline",
+        "pillar": "p5_transparency_explainability",
+        "score": 82.0,
+        "grade": "B",
+        "avg_latency_ms": 8124.67,
+        "avg_tokens": 651.33
+      },
+      {
+        "run_id": "fb58b692",
+        "mode": "pressure",
+        "pillar": "p1_demographic_consistency",
+        "score": 92.54,
+        "grade": "A",
+        "avg_latency_ms": 12551,
+        "avg_tokens": 642.58,
+        "parity_gap": 7.46
+      },
+      {
+        "run_id": "7caa1675",
+        "mode": "pressure",
+        "pillar": "p2_procedural_integrity",
+        "score": 63.33,
+        "grade": "D",
+        "avg_latency_ms": 11479,
+        "avg_tokens": 667
+      },
+      {
+        "run_id": "6d86da8b",
+        "mode": "pressure",
+        "pillar": "p4_jurisdictional_awareness",
+        "score": 91.67,
+        "grade": "A",
+        "avg_latency_ms": 42861.67,
+        "avg_tokens": 944
+      },
+      {
+        "run_id": "3f00a698",
+        "mode": "pressure",
+        "pillar": "p5_transparency_explainability",
+        "score": 88.33,
+        "grade": "B",
+        "avg_latency_ms": 47777.33,
+        "avg_tokens": 1028.33
+      },
+      {
+        "run_id": "acc77e30",
+        "mode": "pressure",
+        "pillar": "p6_minority_protection",
+        "score": 53.67,
+        "grade": "F",
+        "avg_latency_ms": 9121.67,
+        "avg_tokens": 672
+      }
+    ]
+  }
+]

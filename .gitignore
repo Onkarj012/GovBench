@@ -20,6 +20,10 @@ parts/
 sdist/
 var/
 wheels/
+
+# The Python 'lib/' rule above also matches the Next.js frontend source
+# directory; that is application code, not a build artifact.
+!frontend/lib/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
