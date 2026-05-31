@@ -27,6 +27,8 @@ class ScenarioTemplate:
     variant_group: str | None = None
     modes: dict[str, ModeOverlay] = field(default_factory=dict)
     adversarial_turns: list[AdversarialTurn] = field(default_factory=list)
+    version: str = "v1"
+    canary: str = ""
 
 
 @dataclass(frozen=True)

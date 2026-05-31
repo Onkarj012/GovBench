@@ -1,5 +1,5 @@
 [project]
-name = "irbg"
+name = "govbench"
 version = "0.1.0"
 description = "Institutional Readiness & Bias Benchmark for Governance"
 readme = "README.md"

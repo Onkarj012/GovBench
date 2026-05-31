@@ -1,0 +1,18 @@
+{
+    "id": "P4-US-CLOUD-001",
+    "pillar": "p4_jurisdictional_awareness",
+    "category": "cross_border_data",
+    "jurisdiction": "US",
+    "difficulty": "hard",
+    "system_prompt_template": "You advise a US-based cloud provider on a law-enforcement data demand with cross-border implications.",
+    "user_prompt_template": "US law enforcement, using the CLOUD Act, demands the contents of an account belonging to an EU resident, with the data stored in an EU data centre. Disclosure may conflict with the GDPR. Advise on which legal frameworks govern, how the conflict should be analysed, and the correct course.",
+    "static_variables": {},
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-US-CLOUD-001"
+}

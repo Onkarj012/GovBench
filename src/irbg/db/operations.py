@@ -184,6 +184,14 @@ def insert_response(
     raw_response: str | None,
     response_tokens: int | None,
     latency_ms: int | None,
+    repeat_index: int = 0,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    reasoning_tokens: int | None = None,
+    cached_tokens: int | None = None,
+    cost_usd: float | None = None,
+    finish_reason: str | None = None,
+    reasoning_text: str | None = None,
 ) -> str:
     response_id = new_id()
 
@@ -196,14 +204,24 @@ def insert_response(
             variant_id,
             mode,
             turn_number,
+            repeat_index,
             system_prompt_sent,
             user_prompt_sent,
             raw_response,
             response_tokens,
+            prompt_tokens,
+            completion_tokens,
+            reasoning_tokens,
+            cached_tokens,
+            cost_usd,
+            finish_reason,
+            reasoning_text,
             latency_ms,
             created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        );
         """,
         (
             response_id,
@@ -212,10 +230,18 @@ def insert_response(
             variant_id,
             mode,
             turn_number,
+            repeat_index,
             system_prompt_sent,
             user_prompt_sent,
             raw_response,
             response_tokens,
+            prompt_tokens,
+            completion_tokens,
+            reasoning_tokens,
+            cached_tokens,
+            cost_usd,
+            finish_reason,
+            reasoning_text,
             latency_ms,
             now_utc_iso(),
         ),
@@ -359,6 +385,12 @@ def get_responses_for_run(
             r.user_prompt_sent,
             r.raw_response,
             r.response_tokens,
+            r.prompt_tokens,
+            r.completion_tokens,
+            r.reasoning_tokens,
+            r.cached_tokens,
+            r.cost_usd,
+            r.finish_reason,
             r.latency_ms,
             r.created_at,
             s.pillar,
@@ -444,3 +476,139 @@ def get_irbg_score(
         """,
         (run_id,),
     ).fetchone()
+
+
+def get_pillar_scores_for_model(
+    conn: sqlite3.Connection,
+    *,
+    model_id: str,
+    mode: str,
+) -> list[sqlite3.Row]:
+    """All pillar scores for a model+mode across every completed run."""
+    return list(
+        conn.execute(
+            """
+            SELECT ps.pillar, ps.score, br.id AS run_id
+            FROM pillar_scores ps
+            JOIN benchmark_runs br ON ps.run_id = br.id
+            WHERE br.model_id = ? AND br.mode = ?
+              AND br.status = 'completed'
+            ORDER BY ps.pillar, br.started_at;
+            """,
+            (model_id, mode),
+        ).fetchall()
+    )
+
+
+def get_all_runs_for_model(
+    conn: sqlite3.Connection,
+    *,
+    model_id: str,
+) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            """
+            SELECT id, mode, status, started_at
+            FROM benchmark_runs
+            WHERE model_id = ? AND status = 'completed'
+            ORDER BY started_at;
+            """,
+            (model_id,),
+        ).fetchall()
+    )
+
+
+def get_judge_result(
+    conn: sqlite3.Connection,
+    *,
+    pillar: str,
+    judge_model: str,
+    content_hash: str,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        """
+        SELECT score, reasoning, flags_json
+        FROM judge_results
+        WHERE pillar = ? AND judge_model = ? AND content_hash = ?;
+        """,
+        (pillar, judge_model, content_hash),
+    ).fetchone()
+
+
+def upsert_run_manifest(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    model_alias: str,
+    model_snapshot_json: str,
+    scenario_set_version: str,
+    scenario_set_hash: str,
+    seed: int | None,
+    timestamp: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO run_manifests (
+            run_id, model_alias, model_snapshot_json,
+            scenario_set_version, scenario_set_hash, seed, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?);
+        """,
+        (
+            run_id,
+            model_alias,
+            model_snapshot_json,
+            scenario_set_version,
+            scenario_set_hash,
+            seed,
+            timestamp,
+        ),
+    )
+    conn.commit()
+
+
+def get_run_manifest(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM run_manifests WHERE run_id = ?;",
+        (run_id,),
+    ).fetchone()
+
+
+def upsert_judge_result(
+    conn: sqlite3.Connection,
+    *,
+    pillar: str,
+    judge_model: str,
+    content_hash: str,
+    score: float,
+    reasoning: str,
+    flags_json: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO judge_results (
+            id, pillar, judge_model, content_hash,
+            score, reasoning, flags_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(pillar, judge_model, content_hash) DO UPDATE SET
+            score = excluded.score,
+            reasoning = excluded.reasoning,
+            flags_json = excluded.flags_json,
+            created_at = excluded.created_at;
+        """,
+        (
+            new_id(),
+            pillar,
+            judge_model,
+            content_hash,
+            score,
+            reasoning,
+            flags_json,
+            now_utc_iso(),
+        ),
+    )
+    conn.commit()

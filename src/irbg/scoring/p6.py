@@ -74,6 +74,8 @@ def score_p6_run(
                     pillar=PILLAR,
                     scenario_context=context,
                     response_text=text,
+                    model_alias=str(run_row["model_id"]),
+                    db_path=db_path,
                 )
             except JudgeScoringError:
                 verdict = judge_response(

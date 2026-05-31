@@ -22,3 +22,8 @@ class ProviderResponse:
     status_code: int | None = None
     error: str | None = None
     raw_json: dict[str, Any] = field(default_factory=dict)
+    reasoning_tokens: int = 0
+    cached_tokens: int = 0
+    cost_usd: float | None = None
+    finish_reason: str | None = None
+    reasoning_text: str | None = None

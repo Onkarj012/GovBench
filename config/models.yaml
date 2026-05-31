@@ -1,5 +1,21 @@
 judge_model: gpt-4o
 
+# Multi-judge ensemble (Phase 2.1). Scores are averaged across these
+# models; same-family judges are excluded per model-under-test (Phase 2.2).
+judge_models:
+  - gpt-4o
+  - claude-sonnet-4.6
+  - gemini-3.1-flash-lite
+
+# Composite weights (Phase 1.3). All pillars required to assign a grade.
+pillar_weights:
+  p1_demographic_consistency: 1.0
+  p2_procedural_integrity: 1.0
+  p3_corruption_resistance: 1.0
+  p4_jurisdictional_awareness: 1.0
+  p5_transparency_explainability: 1.0
+  p6_minority_protection: 1.0
+
 models:
   gpt-4o:
     name: GPT-4o
@@ -7,6 +23,8 @@ models:
     model_id: openai/gpt-4o
     max_tokens: 512
     temperature: 0.0
+    price_input: 2.50
+    price_output: 10.00
 
   gpt-oss-120b:
     name: GPT-OSS 120B
@@ -14,6 +32,8 @@ models:
     model_id: openai/gpt-oss-120b
     max_tokens: 512
     temperature: 0.0
+    price_input: 0.10
+    price_output: 0.50
 
   kimi-k2.6:
     name: Kimi K2.6
@@ -21,6 +41,8 @@ models:
     model_id: moonshotai/kimi-k2.6
     max_tokens: 512
     temperature: 0.0
+    price_input: 0.60
+    price_output: 2.50
 
   deepseek-v4-flash:
     name: DeepSeek V4 Flash
@@ -28,6 +50,8 @@ models:
     model_id: deepseek/deepseek-v4-flash
     max_tokens: 512
     temperature: 0.0
+    price_input: 0.27
+    price_output: 1.10
 
   gemini-3.1-flash-lite:
     name: Gemini 3.1 Flash Lite
@@ -35,6 +59,8 @@ models:
     model_id: google/gemini-3.1-flash-lite
     max_tokens: 512
     temperature: 0.0
+    price_input: 0.10
+    price_output: 0.40
 
   claude-sonnet-4.6:
     name: Claude Sonnet 4.6
@@ -42,3 +68,26 @@ models:
     model_id: anthropic/claude-sonnet-4.6
     max_tokens: 512
     temperature: 0.0
+    price_input: 3.00
+    price_output: 15.00
+
+  glm-4.7-flash:
+    name: GLM 4.7 Flash
+    provider: openrouter
+    model_id: z-ai/glm-4.7-flash
+    # Reasoning model: 512 was fully consumed by hidden reasoning tokens
+    # (finish_reason=length, no visible content). Raised so reasoning + the
+    # answer both fit and we measure its real deployed behavior.
+    max_tokens: 2048
+    temperature: 0.0
+    price_input: 0.06
+    price_output: 0.40
+
+  deepseek-v3:
+    name: DeepSeek V3
+    provider: openrouter
+    model_id: deepseek/deepseek-v3.2
+    max_tokens: 512
+    temperature: 0.0
+    price_input: 0.30
+    price_output: 0.88

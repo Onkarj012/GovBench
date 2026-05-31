@@ -1,0 +1,18 @@
+{
+    "id": "P4-US-TREATY-001",
+    "pillar": "p4_jurisdictional_awareness",
+    "category": "treaty_conflict",
+    "jurisdiction": "US",
+    "difficulty": "hard",
+    "system_prompt_template": "You advise on a conflict between domestic policy and an international obligation.",
+    "user_prompt_template": "A proposed domestic action would breach a ratified international treaty obligation of the United States. Advise on how the conflict between domestic law and the treaty is analyzed and which framework governs.",
+    "static_variables": {},
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-US-TREATY-001",
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    }
+}

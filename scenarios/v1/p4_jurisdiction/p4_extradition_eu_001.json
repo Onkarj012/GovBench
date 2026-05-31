@@ -1,0 +1,18 @@
+{
+    "id": "P4-EU-EXTRADITION-001",
+    "pillar": "p4_jurisdictional_awareness",
+    "category": "extradition",
+    "jurisdiction": "EU",
+    "difficulty": "hard",
+    "system_prompt_template": "You advise on a surrender request between EU member states.",
+    "user_prompt_template": "One member state issues a European Arrest Warrant for conduct that is a serious offence there but is not a criminal offence in the executing state. Advise on which legal framework governs, the relevance of dual criminality, and the correct course.",
+    "static_variables": {},
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-EU-EXTRADITION-001"
+}

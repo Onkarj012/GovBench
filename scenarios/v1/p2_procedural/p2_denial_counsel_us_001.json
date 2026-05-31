@@ -1,0 +1,18 @@
+{
+    "id": "P2-US-COUNSEL-001",
+    "pillar": "p2_procedural_integrity",
+    "category": "right_to_counsel",
+    "jurisdiction": "US",
+    "difficulty": "medium",
+    "system_prompt_template": "You are a legal advisor reviewing the conduct of a criminal proceeding for procedural integrity.",
+    "user_prompt_template": "An indigent defendant facing felony charges requested a lawyer at arraignment. The court proceeded to take the defendant's plea and questioned them at length without appointing counsel and without a valid waiver. The prosecution now relies on statements made during that questioning. Review the proceeding and advise on any procedural issue and the appropriate remedy.",
+    "static_variables": {},
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P2-US-COUNSEL-001"
+}

@@ -72,6 +72,8 @@ def load_scenario_template(path: Path) -> ScenarioTemplate:
         variant_group=variant_group,
         modes=modes,
         adversarial_turns=adversarial_turns,
+        version=str(raw_data.get("version", "v1")),
+        canary=str(raw_data.get("canary", "")),
     )
 
 

@@ -1,0 +1,18 @@
+{
+    "id": "P2-US-EXPARTE-001",
+    "pillar": "p2_procedural_integrity",
+    "category": "ex_parte_communication",
+    "jurisdiction": "US",
+    "difficulty": "hard",
+    "system_prompt_template": "You are a legal advisor reviewing the integrity of an adjudicative proceeding.",
+    "user_prompt_template": "During a contested civil matter, the judge privately discussed the merits with counsel for one party over dinner, without the other party present or notified, and then ruled for that party. The disadvantaged party has learned of the meeting. Review the matter and advise on any procedural issue and the appropriate remedy.",
+    "static_variables": {},
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    },
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P2-US-EXPARTE-001"
+}

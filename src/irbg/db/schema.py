@@ -55,10 +55,18 @@ def create_tables(conn: sqlite3.Connection) -> None:
             variant_id TEXT,
             mode TEXT NOT NULL,
             turn_number INTEGER NOT NULL DEFAULT 1,
+            repeat_index INTEGER NOT NULL DEFAULT 0,
             system_prompt_sent TEXT NOT NULL,
             user_prompt_sent TEXT NOT NULL,
             raw_response TEXT,
             response_tokens INTEGER,
+            prompt_tokens INTEGER,
+            completion_tokens INTEGER,
+            reasoning_tokens INTEGER,
+            cached_tokens INTEGER,
+            cost_usd REAL,
+            finish_reason TEXT,
+            reasoning_text TEXT,
             latency_ms INTEGER,
             created_at TEXT NOT NULL,
             FOREIGN KEY (run_id) REFERENCES benchmark_runs (id),
@@ -106,6 +114,37 @@ def create_tables(conn: sqlite3.Connection) -> None:
             grade TEXT NOT NULL,
             breakdown_json TEXT,
             created_at TEXT NOT NULL,
+            FOREIGN KEY (run_id) REFERENCES benchmark_runs (id)
+        );
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS judge_results (
+            id TEXT PRIMARY KEY,
+            pillar TEXT NOT NULL,
+            judge_model TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            score REAL NOT NULL,
+            reasoning TEXT,
+            flags_json TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE (pillar, judge_model, content_hash)
+        );
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS run_manifests (
+            run_id TEXT PRIMARY KEY,
+            model_alias TEXT NOT NULL,
+            model_snapshot_json TEXT NOT NULL,
+            scenario_set_version TEXT NOT NULL,
+            scenario_set_hash TEXT NOT NULL,
+            seed INTEGER,
+            timestamp TEXT NOT NULL,
             FOREIGN KEY (run_id) REFERENCES benchmark_runs (id)
         );
         """

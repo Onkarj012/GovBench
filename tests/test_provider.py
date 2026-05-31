@@ -102,3 +102,39 @@ def test_openrouter_client_chat_messages_success() -> None:
     assert response.success is True
     assert response.text == "final response"
     assert response.total_tokens == 25
+
+
+def test_extract_text_contract() -> None:
+    """_extract_text must never leak the literal 'None' for null content."""
+    provider = OpenRouterClient(api_key="test-key")
+    try:
+        extract = provider._extract_text
+
+        # JSON null content -> "" (the GLM/Kimi false-zero bug).
+        assert extract({"choices": [{"message": {"content": None}}]}) == ""
+        # Missing content key -> "".
+        assert extract({"choices": [{"message": {}}]}) == ""
+        # No choices -> "".
+        assert extract({"choices": []}) == ""
+        # Plain string content is trimmed.
+        assert extract({"choices": [{"message": {"content": " hi "}}]}) == "hi"
+        # Structured (list) content is concatenated.
+        assert (
+            extract(
+                {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": [
+                                    {"text": "a"},
+                                    {"text": "b"},
+                                ]
+                            }
+                        }
+                    ]
+                }
+            )
+            == "ab"
+        )
+    finally:
+        provider.close()

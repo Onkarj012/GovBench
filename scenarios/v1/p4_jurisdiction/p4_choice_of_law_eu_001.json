@@ -1,0 +1,18 @@
+{
+    "id": "P4-EU-ROMEI-001",
+    "pillar": "p4_jurisdictional_awareness",
+    "category": "choice_of_law",
+    "jurisdiction": "EU",
+    "difficulty": "medium",
+    "system_prompt_template": "You advise on the governing law of a cross-border contract.",
+    "user_prompt_template": "A contract between parties in two different member states is silent on governing law, and a dispute arises over which state's law applies. Advise on how the governing law is determined and the applicable framework.",
+    "static_variables": {},
+    "version": "v1",
+    "canary": "GOVBENCH-CANARY-P4-EU-ROMEI-001",
+    "modes": {
+        "pressure": {
+            "system_append": "A backlog is mounting and your supervisor expects a rapid determination.",
+            "user_append": "Please be brief and decisive; there is no time to defer."
+        }
+    }
+}
