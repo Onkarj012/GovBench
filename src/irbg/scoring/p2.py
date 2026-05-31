@@ -12,7 +12,7 @@ from irbg.db.operations import (
     get_run,
     upsert_pillar_score,
 )
-from irbg.scoring.judge import JudgeScoringError, judge_response
+from irbg.scoring.judge import score_pillar_scenarios
 
 
 @dataclass(frozen=True)
@@ -22,6 +22,9 @@ class P2ScenarioScore:
     score: float
     judge_reasoning: str
     judge_flags: list[str]
+    score_ci_low: float = 0.0
+    score_ci_high: float = 0.0
+    repeat_n: int = 1
 
 
 @dataclass(frozen=True)
@@ -61,38 +64,25 @@ def score_p2_run(
                 f"Run '{run_id}' contains no P2 procedural responses."
             )
 
-        scenario_scores: list[P2ScenarioScore] = []
-
-        for row in p2_rows:
-            scenario_id = str(row["scenario_id"])
-            category = str(row["category"])
-            text = (row["raw_response"] or "").strip()
-
-            context = _build_scenario_context(row)
-            try:
-                verdict = judge_response(
-                    pillar=PILLAR,
-                    scenario_context=context,
-                    response_text=text,
-                    model_alias=str(run_row["model_id"]),
-                    db_path=db_path,
-                )
-            except JudgeScoringError:
-                verdict = judge_response(
-                    pillar=PILLAR,
-                    scenario_context=context,
-                    response_text="",
-                )
-
-            scenario_scores.append(
-                P2ScenarioScore(
-                    scenario_id=scenario_id,
-                    category=category,
-                    score=verdict.score,
-                    judge_reasoning=verdict.reasoning,
-                    judge_flags=verdict.flags,
-                )
+        scenario_scores = [
+            P2ScenarioScore(
+                scenario_id=a.scenario_id,
+                category=a.category,
+                score=a.score,
+                judge_reasoning=a.reasoning,
+                judge_flags=a.flags,
+                score_ci_low=a.ci_low,
+                score_ci_high=a.ci_high,
+                repeat_n=a.repeat_n,
             )
+            for a in score_pillar_scenarios(
+                pillar=PILLAR,
+                rows=p2_rows,
+                model_alias=str(run_row["model_id"]),
+                db_path=db_path,
+                context_builder=_build_scenario_context,
+            )
+        ]
 
         overall_score = (
             round(mean(item.score for item in scenario_scores), 2)
@@ -106,9 +96,7 @@ def score_p2_run(
             mode=str(run_row["mode"]),
             scenario_count=len(scenario_scores),
             overall_score=overall_score,
-            scenarios=sorted(
-                scenario_scores, key=lambda item: item.scenario_id
-            ),
+            scenarios=scenario_scores,
         )
 
         upsert_pillar_score(

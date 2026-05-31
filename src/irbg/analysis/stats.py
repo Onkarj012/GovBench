@@ -172,28 +172,6 @@ def compute_pairwise_significance(
     return PairwiseReport(mode=mode, comparisons=comparisons)
 
 
-_BOOTSTRAP_N = 2000
-_CI_ALPHA = 0.05
-
-
-def _bootstrap_ci(
-    values: list[float],
-    *,
-    n_boot: int = _BOOTSTRAP_N,
-    alpha: float = _CI_ALPHA,
-) -> tuple[float, float]:
-    if len(values) < 2:
-        v = values[0] if values else 0.0
-        return round(v, 2), round(v, 2)
-    rng = random.Random(42)
-    boot_means = sorted(
-        mean(rng.choices(values, k=len(values))) for _ in range(n_boot)
-    )
-    lo = boot_means[int(alpha / 2 * n_boot)]
-    hi = boot_means[int((1 - alpha / 2) * n_boot)]
-    return round(lo, 2), round(hi, 2)
-
-
 def compute_model_ci(
     *,
     db_path: Path,

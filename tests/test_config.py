@@ -45,3 +45,30 @@ models:
     assert model.alias == "alpha"
     assert model.max_tokens == 512
     assert model.temperature == 0.1
+
+
+def test_model_version_optional(tmp_path: Path) -> None:
+    config_file = tmp_path / "models.yaml"
+    config_file.write_text(
+        """
+models:
+  pinned:
+    name: Pinned
+    provider: openrouter
+    model_id: provider/pinned
+    max_tokens: 256
+    temperature: 0.0
+    version: "2026-05-01"
+  unpinned:
+    name: Unpinned
+    provider: openrouter
+    model_id: provider/unpinned
+    max_tokens: 256
+    temperature: 0.0
+"""
+    )
+
+    models = load_models_config(path=config_file)
+
+    assert models["pinned"].version == "2026-05-01"
+    assert models["unpinned"].version == ""

@@ -27,6 +27,10 @@ class ModelConfig:
     price_input: float = 0.0
     price_output: float = 0.0
     reasoning: str | None = None
+    # Pinned grader version. When set, it is folded into the judge cache
+    # identity so scores stay attributable to a specific judge version and a
+    # version bump invalidates stale cached scores instead of serving them.
+    version: str = ""
 
 
 def load_model_config(
@@ -74,6 +78,7 @@ def load_model_config(
                     if values.get("reasoning") is not None
                     else None
                 ),
+                version=str(values.get("version", "")),
             )
         except KeyError as exc:
             raise ConfigError(
@@ -137,3 +142,15 @@ def load_pillar_weights(path: Path | None = None) -> dict[str, float]:
     if isinstance(weights, dict):
         return {str(k): float(v) for k, v in weights.items()}
     return {}
+
+
+def load_deployment_policy(path: Path | None = None) -> dict:
+    """Deployment-readiness gate config (the ``deployment`` block).
+
+    Recognized keys: ``pillar_floor`` (global minimum per-pillar score),
+    ``pillar_floors`` (per-pillar overrides), ``max_parity_gap`` (P1 hard
+    gate). Returns an empty dict when unspecified so callers apply defaults.
+    """
+    raw = _load_raw(path)
+    policy = raw.get("deployment")
+    return policy if isinstance(policy, dict) else {}

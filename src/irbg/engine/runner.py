@@ -447,6 +447,7 @@ def run_template_folder(
     folder_path: Path,
     db_path: Path,
     mode: str = "baseline",
+    repeats: int = 1,
 ) -> RunFolderResult:
     model = get_model_config(model_alias)
     scenario_files = load_template_files(folder_path)
@@ -533,44 +534,47 @@ def run_template_folder(
                 mode=mode,
             )
 
-            total_prompt_count += len(rendered_prompts)
+            for repeat_index in range(repeats):
+                total_prompt_count += len(rendered_prompts)
 
-            for rendered in rendered_prompts:
-                if mode == "adversarial" and template.adversarial_turns:
-                    _, success, _ = _execute_adversarial_sequence(
-                        client=client,
-                        conn=conn,
-                        run_id=run_id,
-                        model_id=model.model_id,
-                        rendered=rendered,
-                        adversarial_turns=template.adversarial_turns,
-                        temperature=model.temperature,
-                        max_tokens=_effective_max_tokens(
-                            rendered.pillar, model.max_tokens
-                        ),
-                        top_p=model.top_p,
-                        model=model,
-                    )
-                else:
-                    provider_response = _execute_rendered_prompt(
-                        client=client,
-                        conn=conn,
-                        run_id=run_id,
-                        model_id=model.model_id,
-                        rendered=rendered,
-                        temperature=model.temperature,
-                        max_tokens=_effective_max_tokens(
-                            rendered.pillar, model.max_tokens
-                        ),
-                        top_p=model.top_p,
-                        model=model,
-                    )
-                    success = provider_response.success
+                for rendered in rendered_prompts:
+                    if mode == "adversarial" and template.adversarial_turns:
+                        _, success, _ = _execute_adversarial_sequence(
+                            client=client,
+                            conn=conn,
+                            run_id=run_id,
+                            model_id=model.model_id,
+                            rendered=rendered,
+                            adversarial_turns=template.adversarial_turns,
+                            temperature=model.temperature,
+                            max_tokens=_effective_max_tokens(
+                                rendered.pillar, model.max_tokens
+                            ),
+                            top_p=model.top_p,
+                            model=model,
+                            repeat_index=repeat_index,
+                        )
+                    else:
+                        provider_response = _execute_rendered_prompt(
+                            client=client,
+                            conn=conn,
+                            run_id=run_id,
+                            model_id=model.model_id,
+                            rendered=rendered,
+                            temperature=model.temperature,
+                            max_tokens=_effective_max_tokens(
+                                rendered.pillar, model.max_tokens
+                            ),
+                            top_p=model.top_p,
+                            model=model,
+                            repeat_index=repeat_index,
+                        )
+                        success = provider_response.success
 
-                if success:
-                    success_count += 1
-                else:
-                    failure_count += 1
+                    if success:
+                        success_count += 1
+                    else:
+                        failure_count += 1
 
         if failure_count == 0:
             mark_benchmark_run_completed(conn, run_id=run_id)
@@ -626,6 +630,7 @@ def _execute_rendered_prompt(
     max_tokens: int,
     top_p: float,
     model,
+    repeat_index: int = 0,
 ):
     provider_response = client.chat(
         model_id=model_id,
@@ -644,6 +649,7 @@ def _execute_rendered_prompt(
         variant_id=rendered.variant_id,
         mode=rendered.mode,
         turn_number=1,
+        repeat_index=repeat_index,
         system_prompt_sent=rendered.system_prompt,
         user_prompt_sent=rendered.user_prompt,
         raw_response=provider_response.text
@@ -668,6 +674,7 @@ def _execute_adversarial_sequence(
     max_tokens: int,
     top_p: float,
     model,
+    repeat_index: int = 0,
 ) -> tuple[list[str], bool, str | None]:
     messages = [
         ChatMessage(role="system", content=rendered.system_prompt),
@@ -693,6 +700,7 @@ def _execute_adversarial_sequence(
             variant_id=rendered.variant_id,
             mode="adversarial",
             turn_number=1,
+            repeat_index=repeat_index,
             system_prompt_sent=rendered.system_prompt,
             user_prompt_sent=rendered.user_prompt,
             raw_response=(
@@ -729,6 +737,7 @@ def _execute_adversarial_sequence(
                 variant_id=rendered.variant_id,
                 mode="adversarial",
                 turn_number=turn_number,
+                repeat_index=repeat_index,
                 system_prompt_sent=rendered.system_prompt,
                 user_prompt_sent=turn.user_prompt,
                 raw_response=response.text if response.success else None,

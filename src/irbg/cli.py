@@ -492,11 +492,19 @@ def run_template_group(
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
+@click.option(
+    "--repeats",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help="Samples per item (k-repeat) for variance/CI estimation.",
+)
 def run_template_folder_cmd(
     model_alias: str,
     scenario_folder: Path,
     db_path: Path,
     mode: str,
+    repeats: int,
 ) -> None:
     _ensure_database(db_path)
 
@@ -506,6 +514,7 @@ def run_template_folder_cmd(
             folder_path=scenario_folder,
             db_path=db_path,
             mode=mode,
+            repeats=repeats,
         )
     except (
         ConfigError,
@@ -1149,6 +1158,38 @@ def compare_runs_cmd(
         else "N/A"
     )
     console.print(f"Score delta (left - right): {delta_text}")
+
+    if not comparison.scenario_set_match:
+        console.print(
+            "[yellow]WARNING:[/] scenario sets differ "
+            f"(left={comparison.left_scenario_set_hash}, "
+            f"right={comparison.right_scenario_set_hash}); "
+            "per-scenario diff is not apples-to-apples."
+        )
+
+    if comparison.scenario_deltas:
+        order = [
+            "regressed",
+            "newly_failing",
+            "improved",
+            "unchanged",
+            "added",
+            "removed",
+        ]
+        summary_text = ", ".join(
+            f"{k}={comparison.summary[k]}"
+            for k in order
+            if k in comparison.summary
+        )
+        console.print(
+            "Per-scenario diff (left=baseline -> right=candidate): "
+            f"{summary_text}"
+        )
+        if comparison.regressed_scenarios:
+            console.print(
+                "[red]Regressed scenarios:[/] "
+                + ", ".join(comparison.regressed_scenarios)
+            )
 
 
 if __name__ == "__main__":

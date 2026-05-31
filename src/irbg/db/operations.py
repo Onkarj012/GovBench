@@ -577,6 +577,15 @@ def get_run_manifest(
     ).fetchone()
 
 
+def get_repeat_count(conn: sqlite3.Connection, *, run_id: str) -> int:
+    """Number of samples per item for a run (max repeat_index + 1)."""
+    row = conn.execute(
+        "SELECT MAX(repeat_index) AS m FROM responses WHERE run_id = ?;",
+        (run_id,),
+    ).fetchone()
+    return int(row["m"]) + 1 if row and row["m"] is not None else 0
+
+
 def upsert_judge_result(
     conn: sqlite3.Connection,
     *,

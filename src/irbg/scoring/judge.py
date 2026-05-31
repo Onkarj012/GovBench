@@ -3,11 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
 
 from irbg.config import get_model_config, load_judge_models
 from irbg.db.operations import (
@@ -274,6 +276,20 @@ def _content_hash(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+@lru_cache(maxsize=64)
+def _judge_fingerprint(judge_alias: str) -> str:
+    """Version-attributable judge identity used as the cache key.
+
+    Folds the pinned grader version (``version`` in models.yaml, else the
+    resolved ``model_id``) into the stored ``judge_model`` value so each
+    cached score is attributable to a specific judge version and a version
+    bump yields a new key instead of silently serving a stale score.
+    """
+    cfg = get_model_config(judge_alias)
+    version = (cfg.version or cfg.model_id).strip()
+    return f"{judge_alias}@{version}"
+
+
 def _judge_single(
     *,
     pillar: str,
@@ -284,11 +300,12 @@ def _judge_single(
     conn,
 ) -> JudgeVerdict:
     """One judge model's verdict, backed by a durable DB cache."""
+    fingerprint = _judge_fingerprint(judge_alias)
     if conn is not None:
         cached = get_judge_result(
             conn,
             pillar=pillar,
-            judge_model=judge_alias,
+            judge_model=fingerprint,
             content_hash=content_hash,
         )
         if cached is not None:
@@ -334,7 +351,7 @@ def _judge_single(
         upsert_judge_result(
             conn,
             pillar=pillar,
-            judge_model=judge_alias,
+            judge_model=fingerprint,
             content_hash=content_hash,
             score=verdict.score,
             reasoning=verdict.reasoning,
@@ -420,10 +437,94 @@ def judge_response(
         flags=flags,
         raw_response="",
         scores=scores,
-        judges=[a for a, _, _ in results],
+        judges=[_judge_fingerprint(a) for a, _, _ in results],
         judge_families=[f for _, f, _ in results],
         disagreement=disagreement,
     )
+
+
+@dataclass(frozen=True)
+class ScenarioAggregate:
+    """Per-scenario score collapsed across repeated samples (k-repeat)."""
+
+    scenario_id: str
+    category: str
+    score: float  # median across repeats
+    ci_low: float
+    ci_high: float
+    repeat_n: int
+    reasoning: str
+    flags: list[str]
+
+
+def _repeat_ci(values: list[float]) -> tuple[float, float]:
+    """Percentile bootstrap CI of the mean across repeated samples."""
+    if len(values) < 2:
+        v = values[0] if values else 0.0
+        return round(v, 2), round(v, 2)
+    rng = random.Random(42)
+    boots = sorted(
+        mean(rng.choices(values, k=len(values))) for _ in range(1000)
+    )
+    return round(boots[25], 2), round(boots[975], 2)
+
+
+def score_pillar_scenarios(
+    *,
+    pillar: str,
+    rows: list,
+    model_alias: str,
+    db_path: Path | None,
+    context_builder,
+) -> list[ScenarioAggregate]:
+    """Judge each response, collapsing repeated samples per scenario into a
+    median score with a bootstrap CI (k-repeat consistency)."""
+    groups: dict[str, list] = defaultdict(list)
+    for row in rows:
+        groups[str(row["scenario_id"])].append(row)
+
+    aggregates: list[ScenarioAggregate] = []
+    for scenario_id in sorted(groups):
+        group = groups[scenario_id]
+        category = str(group[0]["category"])
+        scores: list[float] = []
+        reasonings: list[str] = []
+        flags: set[str] = set()
+        for row in group:
+            text = (row["raw_response"] or "").strip()
+            context = context_builder(row)
+            try:
+                verdict = judge_response(
+                    pillar=pillar,
+                    scenario_context=context,
+                    response_text=text,
+                    model_alias=model_alias,
+                    db_path=db_path,
+                )
+            except JudgeScoringError:
+                verdict = judge_response(
+                    pillar=pillar,
+                    scenario_context=context,
+                    response_text="",
+                )
+            scores.append(verdict.score)
+            reasonings.append(verdict.reasoning)
+            flags.update(verdict.flags)
+
+        ci_low, ci_high = _repeat_ci(scores)
+        aggregates.append(
+            ScenarioAggregate(
+                scenario_id=scenario_id,
+                category=category,
+                score=round(median(scores), 2),
+                ci_low=ci_low,
+                ci_high=ci_high,
+                repeat_n=len(scores),
+                reasoning=" | ".join(reasonings),
+                flags=sorted(flags),
+            )
+        )
+    return aggregates
 
 
 _DECISION_LABELS: dict[str, list[str]] = {
