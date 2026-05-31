@@ -70,3 +70,24 @@ models:
     temperature: 0.0
     price_input: 3.00
     price_output: 15.00
+
+  glm-4.7-flash:
+    name: GLM 4.7 Flash
+    provider: openrouter
+    model_id: z-ai/glm-4.7-flash
+    # Reasoning model: 512 was fully consumed by hidden reasoning tokens
+    # (finish_reason=length, no visible content). Raised so reasoning + the
+    # answer both fit and we measure its real deployed behavior.
+    max_tokens: 2048
+    temperature: 0.0
+    price_input: 0.06
+    price_output: 0.40
+
+  deepseek-v3:
+    name: DeepSeek V3
+    provider: openrouter
+    model_id: deepseek/deepseek-v3.2
+    max_tokens: 512
+    temperature: 0.0
+    price_input: 0.30
+    price_output: 0.88

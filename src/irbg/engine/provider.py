@@ -215,7 +215,14 @@ class OpenRouterClient:
             return ""
 
         message = choices[0].get("message", {})
-        content = message.get("content", "")
+        content = message.get("content")
+
+        # Null/absent content (some providers return content: null when the
+        # completion is empty) must map to "" so downstream scoring treats it
+        # as an empty response. str(None) would otherwise leak the literal
+        # "None" and be scored as a real answer.
+        if content is None:
+            return ""
 
         if isinstance(content, str):
             return content.strip()

@@ -16,6 +16,11 @@ from irbg.analysis.aggregate import (
     aggregate_run_score,
 )
 from irbg.analysis.compare import compare_runs
+from irbg.analysis.export import write_leaderboard
+from irbg.analysis.quality import (
+    DEFAULT_INVALID_THRESHOLD,
+    assess_all_runs,
+)
 from irbg.analysis.reporting import (
     RunReportError,
     build_run_report,
@@ -145,6 +150,84 @@ def list_runs(db_path: Path) -> None:
         )
 
     console.print(table)
+
+
+@main.command("quarantine-check")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--threshold",
+    type=float,
+    default=DEFAULT_INVALID_THRESHOLD,
+    show_default=True,
+    help="Max share of empty/invalid responses before a run is quarantined.",
+)
+def quarantine_check_cmd(db_path: Path, threshold: float) -> None:
+    """Flag runs with too many empty/invalid responses."""
+    _ensure_database(db_path)
+    reports = assess_all_runs(db_path=db_path, threshold=threshold)
+
+    table = Table(title="Run Quality / Quarantine")
+    table.add_column("Run ID")
+    table.add_column("Model")
+    table.add_column("Invalid", justify="right")
+    table.add_column("Total", justify="right")
+    table.add_column("Invalid %", justify="right")
+    table.add_column("Status")
+
+    flagged = 0
+    for report in sorted(reports, key=lambda r: r.invalid_ratio, reverse=True):
+        if report.quarantined:
+            flagged += 1
+        table.add_row(
+            report.run_id[:8],
+            report.model_alias,
+            str(report.invalid),
+            str(report.total),
+            f"{report.invalid_ratio * 100:.1f}%",
+            "[red]QUARANTINE[/red]"
+            if report.quarantined
+            else "[green]ok[/green]",
+        )
+
+    console.print(table)
+    console.print(f"{flagged} run(s) quarantined at threshold {threshold:.0%}.")
+
+
+@main.command("export-leaderboard")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+@click.option(
+    "--out",
+    type=click.Path(path_type=Path),
+    default=Path("./frontend/lib/leaderboard.json"),
+    show_default=True,
+)
+@click.option(
+    "--threshold",
+    type=float,
+    default=DEFAULT_INVALID_THRESHOLD,
+    show_default=True,
+    help="Exclude runs above this share of empty/invalid responses.",
+)
+def export_leaderboard_cmd(db_path: Path, out: Path, threshold: float) -> None:
+    """Generate the frontend leaderboard JSON from the DB (source of truth)."""
+    _ensure_database(db_path)
+    count = write_leaderboard(
+        db_path=db_path, output_path=out, threshold=threshold
+    )
+    console.print(
+        f"[green]OK[/green] Exported {count} model(s) to {out} "
+        f"(quarantine threshold {threshold:.0%})."
+    )
 
 
 @main.command("list-variants")

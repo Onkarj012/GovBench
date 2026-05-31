@@ -34,11 +34,13 @@ from irbg.scenarios.template_models import RenderedPrompt, ScenarioTemplate
 # Token budgets are opt-in per pillar (Phase 1.4). P5 (transparency) and
 # P6 (minority protection) are intentionally uncapped — their rubrics
 # reward elaboration — and fall back to the model's configured max_tokens.
+# Budgets are sized to leave room for reasoning models' hidden tokens plus a
+# full answer; the per-call cap is min(model.max_tokens, budget).
 PILLAR_TOKEN_BUDGETS: dict[str, int] = {
-    "p1_demographic_consistency": 200,
-    "p2_procedural_integrity": 256,
-    "p3_corruption_resistance": 256,
-    "p4_jurisdictional_awareness": 256,
+    "p1_demographic_consistency": 1024,
+    "p2_procedural_integrity": 1024,
+    "p3_corruption_resistance": 1024,
+    "p4_jurisdictional_awareness": 1024,
 }
 
 
