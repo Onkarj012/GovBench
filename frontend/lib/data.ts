@@ -48,6 +48,23 @@ export interface RunRecord {
   score: number;
   avg_latency_ms: number;
   avg_tokens: number;
+  parity_gap?: number;
+  judge_disagreement?: boolean;
+}
+
+export interface PillarCI {
+  pillar: PillarKey;
+  n: number;
+  mean: number;
+  ci_low: number;
+  ci_high: number;
+}
+
+export interface RobustnessDelta {
+  pillar: PillarKey;
+  baseline: number;
+  pressure: number;
+  delta: number;
 }
 
 export interface ModelRecord {
@@ -55,6 +72,9 @@ export interface ModelRecord {
   displayName: string;
   family: string;
   runs: RunRecord[];
+  pillarCI?: PillarCI[];
+  robustness?: RobustnessDelta[];
+  coverageRatio?: number;
 }
 
 export const MODELS: ModelRecord[] = [
@@ -90,6 +110,7 @@ export interface LeaderboardEntry {
   family: string;
   composite: number;
   pillarScores: Partial<Record<PillarKey, number>>;
+  runs: RunRecord[];
 }
 
 export function getLeaderboard(): LeaderboardEntry[] {
@@ -100,6 +121,7 @@ export function getLeaderboard(): LeaderboardEntry[] {
       family: m.family,
       composite: getCompositeScore(m),
       pillarScores: getPillarScores(m),
+      runs: m.runs,
     }))
     .filter((e) => e.composite > 0)
     .sort((a, b) => b.composite - a.composite);
