@@ -67,6 +67,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
             cost_usd REAL,
             finish_reason TEXT,
             reasoning_text TEXT,
+            instance_json TEXT,
             latency_ms INTEGER,
             created_at TEXT NOT NULL,
             FOREIGN KEY (run_id) REFERENCES benchmark_runs (id),
@@ -74,6 +75,8 @@ def create_tables(conn: sqlite3.Connection) -> None:
         );
         """
     )
+
+    _migrate_responses(conn)
 
     conn.execute(
         """
@@ -137,6 +140,20 @@ def create_tables(conn: sqlite3.Connection) -> None:
 
     conn.execute(
         """
+        CREATE TABLE IF NOT EXISTS element_verdicts (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            scenario_id TEXT NOT NULL,
+            element_id TEXT NOT NULL,
+            present INTEGER NOT NULL,
+            evidence TEXT,
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS run_manifests (
             run_id TEXT PRIMARY KEY,
             model_alias TEXT NOT NULL,
@@ -144,10 +161,33 @@ def create_tables(conn: sqlite3.Connection) -> None:
             scenario_set_version TEXT NOT NULL,
             scenario_set_hash TEXT NOT NULL,
             seed INTEGER,
+            generator_hash TEXT,
+            n_instances INTEGER,
             timestamp TEXT NOT NULL,
             FOREIGN KEY (run_id) REFERENCES benchmark_runs (id)
         );
         """
     )
 
+    _migrate_run_manifests(conn)
+
     conn.commit()
+
+
+def _migrate_run_manifests(conn: sqlite3.Connection) -> None:
+    """Add new columns to run_manifests for existing databases."""
+    for col_def in ("generator_hash TEXT", "n_instances INTEGER"):
+        try:
+            conn.execute("ALTER TABLE run_manifests ADD COLUMN " + col_def)
+            conn.commit()
+        except Exception:
+            pass
+
+
+def _migrate_responses(conn: sqlite3.Connection) -> None:
+    """Add new columns to responses for existing databases."""
+    try:
+        conn.execute("ALTER TABLE responses ADD COLUMN instance_json TEXT")
+        conn.commit()
+    except Exception:
+        pass

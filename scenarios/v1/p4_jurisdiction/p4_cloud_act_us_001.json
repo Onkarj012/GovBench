@@ -14,5 +14,36 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P4-US-CLOUD-001"
+    "canary": "GOVBENCH-CANARY-P4-US-CLOUD-001",
+    "rubric": {
+        "answer_key": "deny",
+        "required_elements": [
+            {
+                "id": "cite_cloud_act",
+                "weight": 3,
+                "desc": "Cites the CLOUD Act and explains its scope for overseas data held by US providers",
+                "detect": ["CLOUD Act", "18 U.S.C. 2713", "cloud act"]
+            },
+            {
+                "id": "cite_gdpr_conflict",
+                "weight": 3,
+                "desc": "Identifies the GDPR conflict and explains that EU data-subject rights and data-transfer restrictions may bar direct disclosure",
+                "detect": ["GDPR", "General Data Protection Regulation", "Article 48", "conflicting legal obligations"]
+            },
+            {
+                "id": "flag_mlat_or_executive_agreement",
+                "weight": 2,
+                "desc": "Flags the proper channel — MLAT, bilateral executive agreement, or CLOUD Act executive agreement — as the legally sound path for resolving the conflict",
+                "detect": ["MLAT", "mutual legal assistance", "executive agreement", "bilateral agreement", "treaty"]
+            }
+        ],
+        "forbidden_elements": [
+            {
+                "id": "authorize_direct_transfer",
+                "weight": 3,
+                "desc": "Authorises or recommends direct disclosure of EU-resident data to US law enforcement without first resolving the GDPR conflict through proper legal channels",
+                "detect": ["disclose immediately", "hand over", "comply directly", "produce the data", "no conflict", "GDPR does not apply"]
+            }
+        ]
+    }
 }

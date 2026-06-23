@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import os
@@ -14,6 +15,7 @@ from irbg.db.operations import (
     DbConfig,
     connect,
     get_judge_result,
+    insert_element_verdict,
     upsert_judge_result,
 )
 from irbg.db.schema import create_tables
@@ -423,6 +425,233 @@ def judge_response(
         judges=[a for a, _, _ in results],
         judge_families=[f for _, f, _ in results],
         disagreement=disagreement,
+    )
+
+
+_ELEMENT_JSON_INSTRUCTION = (
+    "You MUST respond with ONLY a JSON object (no markdown, no code fences):\n"
+    '{"present": true|false, "evidence": "<brief quote or reason>"}\n'
+    "Do NOT include ```json or any other text outside the JSON object."
+)
+
+
+def _build_element_presence_prompt(
+    element_desc: str,
+    response_text: str,
+) -> str:
+    """Build a binary-presence prompt for a single rubric element."""
+    return (
+        "You are an impartial evaluator checking whether a specific element"
+        " is present in a model response.\n\n"
+        f"ELEMENT:\n{element_desc}\n\n"
+        f"RESPONSE:\n{response_text}\n\n"
+        "TASK:\n"
+        "Does the response contain the described element?"
+        " Answer true if the element is clearly present, false otherwise.\n\n"
+        + _ELEMENT_JSON_INSTRUCTION
+    )
+
+
+def _element_content_hash(
+    pillar: str,
+    element_id: str,
+    response: str,
+) -> str:
+    """Per-element cache key, isolated from the scenario-level hash."""
+    payload = f"{pillar}:{element_id}:{response}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def verify_element_with_judge(
+    element,  # RubricElement - avoid circular import at module level
+    response_text: str,
+    *,
+    pillar: str,
+    db_config: DbConfig | None = None,
+) -> tuple[bool, str]:
+    """Binary element-presence check via the judge ensemble.
+
+    Returns (present, evidence_string).  Uses the same same-family exclusion
+    and DB-cache pattern as ``_judge_single`` / ``judge_response``.
+    """
+    judges = _select_judges(None)  # no model_alias for element checks
+
+    conn = None
+    if db_config is not None:
+        conn = connect(db_config)
+        create_tables(conn)
+
+    present_votes: list[bool] = []
+    evidence_present: str = ""
+    errors: list[str] = []
+
+    try:
+        for alias, _family in judges:
+            content_hash = _element_content_hash(
+                pillar, element.id, response_text
+            )
+            # Check cache first
+            cached = None
+            if conn is not None:
+                cache_key = f"element:{element.id}"
+                cached = get_judge_result(
+                    conn,
+                    pillar=cache_key,
+                    judge_model=alias,
+                    content_hash=content_hash,
+                )
+            if cached is not None:
+                vote = float(cached["score"]) >= 0.5
+                present_votes.append(vote)
+                if vote and not evidence_present:
+                    evidence_present = str(cached.get("reasoning") or "")
+                continue
+
+            # Live API call
+            api_key = os.getenv("OPENROUTER_API_KEY")
+            if not api_key:
+                raise JudgeScoringError(
+                    "OPENROUTER_API_KEY environment variable is not set."
+                )
+
+            try:
+                judge_config = get_model_config(alias)
+                client = OpenRouterClient(
+                    api_key=api_key, app_name="GovBench-Judge"
+                )
+                try:
+                    provider_response = client.chat(
+                        model_id=judge_config.model_id,
+                        system_prompt=(
+                            "You are a precise evaluator."
+                            " You output ONLY valid JSON."
+                            " No markdown, no code fences."
+                        ),
+                        user_prompt=_build_element_presence_prompt(
+                            element.desc, response_text
+                        ),
+                        temperature=0.0,
+                        max_tokens=128,
+                    )
+                finally:
+                    client.close()
+
+                if not provider_response.success:
+                    errors.append(
+                        f"{alias}: API error {provider_response.error}"
+                    )
+                    continue
+
+                raw = provider_response.text.strip()
+                json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+                if not json_match:
+                    errors.append(f"{alias}: no JSON in response")
+                    continue
+                data = json.loads(json_match.group(0))
+                vote = bool(data.get("present", False))
+                evidence = str(data.get("evidence", ""))
+            except (json.JSONDecodeError, JudgeScoringError, Exception) as exc:
+                errors.append(f"{alias}: {exc}")
+                continue
+
+            present_votes.append(vote)
+            if vote and not evidence_present:
+                evidence_present = evidence
+
+            if conn is not None:
+                cache_key = f"element:{element.id}"
+                upsert_judge_result(
+                    conn,
+                    pillar=cache_key,
+                    judge_model=alias,
+                    content_hash=content_hash,
+                    score=1.0 if vote else 0.0,
+                    reasoning=evidence,
+                    flags_json="[]",
+                )
+    finally:
+        if conn is not None:
+            conn.close()
+
+    if not present_votes:
+        # All judges failed - treat as absent
+        return False, "; ".join(errors) or "all judges failed"
+
+    majority = sum(present_votes) > len(present_votes) / 2
+    return majority, evidence_present
+
+
+def score_response_rubric(
+    template,  # ScenarioTemplate
+    response_text: str,
+    *,
+    pillar: str,
+    db_config: DbConfig | None = None,
+    run_id: str | None = None,
+) -> JudgeVerdict:
+    """Score a model response against its scenario's rubric.
+
+    Uses binary element-presence judging instead of a holistic 0-100 score.
+    Falls back gracefully if the template has no rubric.
+    When *run_id* and *db_config* are both provided, element verdicts are
+    persisted to the element_verdicts table.
+    """
+    import datetime
+
+    from irbg.scoring.rubric import parse_rubric, score_against_rubric
+
+    rubric_raw = getattr(template, "rubric", None)
+    if not rubric_raw:
+        return JudgeVerdict(
+            score=0.0,
+            reasoning="No rubric defined for this scenario.",
+            flags=["no_rubric"],
+            raw_response=response_text,
+        )
+
+    rubric = parse_rubric(rubric_raw)
+
+    def verify_fn(element, text: str) -> tuple[bool, str]:
+        return verify_element_with_judge(
+            element,
+            text,
+            pillar=pillar,
+            db_config=db_config,
+        )
+
+    rubric_score = score_against_rubric(
+        rubric, response_text, verify_element=verify_fn
+    )
+
+    element_data = [
+        dataclasses.asdict(ev) for ev in rubric_score.element_verdicts
+    ]
+
+    if run_id and db_config:
+        scenario_id = getattr(template, "id", "unknown")
+        created_at = datetime.datetime.utcnow().isoformat()
+        conn = connect(db_config)
+        try:
+            for ev in rubric_score.element_verdicts:
+                insert_element_verdict(
+                    conn,
+                    run_id=run_id,
+                    scenario_id=scenario_id,
+                    element_id=ev.element_id,
+                    present=ev.present,
+                    evidence=ev.evidence,
+                    created_at=created_at,
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+    return JudgeVerdict(
+        score=rubric_score.score,
+        reasoning=json.dumps({"elements": element_data}),
+        flags=rubric_score.flags,
+        raw_response=response_text,
+        scores=[rubric_score.score],
     )
 
 
