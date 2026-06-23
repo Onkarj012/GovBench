@@ -15,6 +15,7 @@ from irbg.db.operations import (
     DbConfig,
     connect,
     get_judge_result,
+    insert_element_verdict,
     upsert_judge_result,
 )
 from irbg.db.schema import create_tables
@@ -586,12 +587,17 @@ def score_response_rubric(
     *,
     pillar: str,
     db_config: DbConfig | None = None,
+    run_id: str | None = None,
 ) -> JudgeVerdict:
     """Score a model response against its scenario's rubric.
 
     Uses binary element-presence judging instead of a holistic 0-100 score.
     Falls back gracefully if the template has no rubric.
+    When *run_id* and *db_config* are both provided, element verdicts are
+    persisted to the element_verdicts table.
     """
+    import datetime
+
     from irbg.scoring.rubric import parse_rubric, score_against_rubric
 
     rubric_raw = getattr(template, "rubric", None)
@@ -620,6 +626,25 @@ def score_response_rubric(
     element_data = [
         dataclasses.asdict(ev) for ev in rubric_score.element_verdicts
     ]
+
+    if run_id and db_config:
+        scenario_id = getattr(template, "id", "unknown")
+        created_at = datetime.datetime.utcnow().isoformat()
+        conn = connect(db_config)
+        try:
+            for ev in rubric_score.element_verdicts:
+                insert_element_verdict(
+                    conn,
+                    run_id=run_id,
+                    scenario_id=scenario_id,
+                    element_id=ev.element_id,
+                    present=ev.present,
+                    evidence=ev.evidence,
+                    created_at=created_at,
+                )
+            conn.commit()
+        finally:
+            conn.close()
 
     return JudgeVerdict(
         score=rubric_score.score,

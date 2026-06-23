@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 
 from irbg.demographics import (
@@ -134,23 +135,21 @@ def generate_procedural_prompts(
         for i, instance_vars in enumerate(instances):
             for variant in variants:
                 merged = {**instance_vars, **variant.as_template_variables()}
-                results.append(
-                    render_prompt(
-                        template,
-                        variables=merged,
-                        mode=mode,
-                        variant_id=f"inst{i}/{variant.id}",
-                    )
+                rp = render_prompt(
+                    template,
+                    variables=merged,
+                    mode=mode,
+                    variant_id=f"inst{i}/{variant.id}",
                 )
+                results.append(_dc_replace(rp, instance_vars=instance_vars))
     else:
         for i, instance_vars in enumerate(instances):
-            results.append(
-                render_prompt(
-                    template,
-                    variables=instance_vars,
-                    mode=mode,
-                    variant_id=f"inst{i}",
-                )
+            rp = render_prompt(
+                template,
+                variables=instance_vars,
+                mode=mode,
+                variant_id=f"inst{i}",
             )
+            results.append(_dc_replace(rp, instance_vars=instance_vars))
 
     return results
