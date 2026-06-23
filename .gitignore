@@ -215,3 +215,21 @@ __marimo__/
 
 
 graphify-out/cache/
+
+# local-only planning / issue docs
+plans/
+issues/
+
+# generated reports and outputs
+reports/
+
+# chat session files
+.chat.json
+chat.json
+
+# local exploration dirs
+deep-swe/
+docs/
+
+# holdout scenarios (never publish)
+scenarios/holdout/
