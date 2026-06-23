@@ -33,10 +33,20 @@ from irbg.analysis.visualize import (
     generate_run_summary_chart,
 )
 from irbg.config import ConfigError, load_models_config
-from irbg.db.operations import DbConfig, connect, list_benchmark_runs
+from irbg.db.operations import (
+    DbConfig,
+    connect,
+    list_benchmark_runs,
+)
 from irbg.db.schema import create_tables
 from irbg.demographics import DemographicsError, get_variant_group
-from irbg.engine.prompt_builder import PromptBuildError
+from irbg.engine.fact_generator import (
+    FactGenerationError,
+    parse_fact_space,
+    sample_instance,
+    seed_for,
+)
+from irbg.engine.prompt_builder import PromptBuildError, render_prompt
 from irbg.engine.provider import OpenRouterClient
 from irbg.engine.runner import (
     run_all_template_variants,
@@ -492,11 +502,26 @@ def run_template_group(
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
+@click.option(
+    "--seed",
+    type=int,
+    default=None,
+    help="RNG seed for procedural fact-space sampling.",
+)
+@click.option(
+    "--instances",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Number of instances to sample per procedural template.",
+)
 def run_template_folder_cmd(
     model_alias: str,
     scenario_folder: Path,
     db_path: Path,
     mode: str,
+    seed: int | None,
+    instances: int,
 ) -> None:
     _ensure_database(db_path)
 
@@ -506,6 +531,8 @@ def run_template_folder_cmd(
             folder_path=scenario_folder,
             db_path=db_path,
             mode=mode,
+            seed=seed,
+            n_instances=instances,
         )
     except (
         ConfigError,
@@ -1149,6 +1176,187 @@ def compare_runs_cmd(
         else "N/A"
     )
     console.print(f"Score delta (left - right): {delta_text}")
+
+
+@main.command("generate")
+@click.option("--pillar", required=True)
+@click.option("--instances", default=5, show_default=True, type=int)
+@click.option("--seed", default=42, show_default=True, type=int)
+@click.option(
+    "--split",
+    type=click.Choice(["public", "holdout", "all"]),
+    default="public",
+    show_default=True,
+)
+@click.option("--out", type=click.Path(path_type=Path), default=None)
+@click.option(
+    "--scenarios-dir",
+    type=click.Path(path_type=Path),
+    default=Path("./scenarios"),
+    show_default=True,
+)
+def generate_cmd(
+    pillar: str,
+    instances: int,
+    seed: int,
+    split: str,
+    out: Path | None,
+    scenarios_dir: Path,
+) -> None:
+    """Sample fact-space instances and render prompts for a pillar."""
+    dirs: list[Path] = []
+    if split in ("public", "all"):
+        dirs.append(scenarios_dir / "v1" / pillar)
+    if split in ("holdout", "all"):
+        dirs.append(scenarios_dir / "holdout" / pillar)
+
+    rows: list[dict] = []
+
+    for scan_dir in dirs:
+        if not scan_dir.is_dir():
+            continue
+        for json_file in sorted(scan_dir.glob("*.json")):
+            try:
+                template = load_scenario_template(json_file)
+            except ScenarioTemplateLoadError as exc:
+                console.print(f"[yellow]Skip {json_file.name}:[/yellow] {exc}")
+                continue
+
+            if template.fact_space:
+                try:
+                    fs = parse_fact_space(template.fact_space)
+                except FactGenerationError as exc:
+                    console.print(
+                        f"[yellow]Skip {json_file.name}:[/yellow] {exc}"
+                    )
+                    continue
+
+                tmpl_seed = seed_for(template.id, seed)
+                rng = __import__("random").Random(tmpl_seed)
+
+                for i in range(instances):
+                    try:
+                        inst = sample_instance(fs, rng=rng, draw_index=i)
+                    except FactGenerationError as exc:
+                        console.print(
+                            f"[yellow]Instance {i} skip:[/yellow] {exc}"
+                        )
+                        break
+
+                    try:
+                        rendered = render_prompt(
+                            template,
+                            variables=inst,
+                            mode="baseline",
+                            variant_id=f"inst{i}",
+                        )
+                    except PromptBuildError as exc:
+                        console.print(
+                            f"[yellow]Render {i} skip:[/yellow] {exc}"
+                        )
+                        continue
+
+                    rows.append(
+                        {
+                            "scenario_id": template.id,
+                            "instance_index": i,
+                            "seed": tmpl_seed,
+                            "variables": inst,
+                            "user_prompt": rendered.user_prompt,
+                            "system_prompt": rendered.system_prompt,
+                        }
+                    )
+            else:
+                try:
+                    rendered = render_prompt(
+                        template,
+                        variables={},
+                        mode="baseline",
+                    )
+                except PromptBuildError as exc:
+                    console.print(f"[yellow]Render skip:[/yellow] {exc}")
+                    continue
+
+                rows.append(
+                    {
+                        "scenario_id": template.id,
+                        "instance_index": 0,
+                        "seed": seed,
+                        "variables": {},
+                        "user_prompt": rendered.user_prompt,
+                        "system_prompt": rendered.system_prompt,
+                    }
+                )
+
+    table = Table(title=f"Generated prompts — {pillar}")
+    table.add_column("scenario_id")
+    table.add_column("instance_index", justify="right")
+    table.add_column("user_prompt[:60]")
+
+    for row in rows:
+        table.add_row(
+            row["scenario_id"],
+            str(row["instance_index"]),
+            row["user_prompt"][:60],
+        )
+
+    console.print(table)
+
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        lines = "\n".join(json.dumps(r) for r in rows)
+        out.write_text(lines + ("\n" if lines else ""))
+        console.print(f"[green]OK[/green] Wrote {len(rows)} record(s) to {out}")
+
+
+@main.command("explain-score")
+@click.argument("run_id")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=Path("./irbg.sqlite"),
+    show_default=True,
+)
+def explain_score_cmd(run_id: str, db_path: Path) -> None:
+    """Show element verdicts for a run as a detailed audit table."""
+    _ensure_database(db_path)
+
+    conn = connect(DbConfig(path=db_path))
+    try:
+        rows = conn.execute(
+            """
+            SELECT scenario_id, element_id, present, evidence
+            FROM element_verdicts
+            WHERE run_id = ?
+            ORDER BY scenario_id, element_id;
+            """,
+            (run_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    table = Table(title=f"Element Verdicts — {run_id[:12]}…")
+    table.add_column("Scenario ID")
+    table.add_column("Element ID")
+    table.add_column("Present")
+    table.add_column("Evidence")
+
+    for row in rows:
+        present_str = (
+            "[green]yes[/green]" if row["present"] else "[red]no[/red]"
+        )
+        table.add_row(
+            str(row["scenario_id"]),
+            str(row["element_id"]),
+            present_str,
+            str(row["evidence"] or "-"),
+        )
+
+    console.print(table)
+    if not rows:
+        console.print(
+            f"[yellow]No element verdicts found for run {run_id}.[/yellow]"
+        )
 
 
 if __name__ == "__main__":

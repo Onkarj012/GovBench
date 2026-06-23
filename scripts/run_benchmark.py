@@ -8,7 +8,6 @@ import sqlite3
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 MODELS = [
     "glm-4.7-flash",
@@ -72,9 +71,9 @@ def main() -> None:
         results[model] = {}
         for mode in MODES:
             results[model][mode] = {}
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"MODEL: {model} | MODE: {mode}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             for pillar, folder in PILLAR_FOLDERS.items():
                 if already_done(DB_PATH, model, mode, pillar):
@@ -96,14 +95,22 @@ def main() -> None:
                 print(f"  {pillar}: running...", end="", flush=True)
 
                 # Run
-                rc, stdout, stderr = run([
-                    sys.executable, "-m", "irbg.cli",
-                    "run-template-folder",
-                    "--model", model,
-                    "--scenario-folder", folder,
-                    "--mode", mode,
-                    "--db-path", DB_PATH,
-                ])
+                rc, stdout, stderr = run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "irbg.cli",
+                        "run-template-folder",
+                        "--model",
+                        model,
+                        "--scenario-folder",
+                        folder,
+                        "--mode",
+                        mode,
+                        "--db-path",
+                        DB_PATH,
+                    ]
+                )
                 if rc != 0:
                     msg = stderr.strip().splitlines()[-1][:80]
                     print(f" FAILED ({msg})")
@@ -111,7 +118,11 @@ def main() -> None:
                     continue
 
                 run_id = next(
-                    (l.split("Run ID:")[-1].strip() for l in stdout.splitlines() if "Run ID:" in l),
+                    (
+                        line.split("Run ID:")[-1].strip()
+                        for line in stdout.splitlines()
+                        if "Run ID:" in line
+                    ),
                     None,
                 )
                 if not run_id:
@@ -120,32 +131,68 @@ def main() -> None:
                     continue
 
                 # Score
-                rc, stdout, stderr = run([
-                    sys.executable, "-m", "irbg.cli",
-                    SCORING_CMD[pillar],
-                    "--run-id", run_id,
-                    "--db-path", DB_PATH,
-                ])
+                rc, stdout, stderr = run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "irbg.cli",
+                        SCORING_CMD[pillar],
+                        "--run-id",
+                        run_id,
+                        "--db-path",
+                        DB_PATH,
+                    ]
+                )
                 score = next(
-                    (l.split("Overall Score:")[-1].strip() for l in stdout.splitlines() if "Overall Score:" in l),
+                    (
+                        line.split("Overall Score:")[-1].strip()
+                        for line in stdout.splitlines()
+                        if "Overall Score:" in line
+                    ),
                     "N/A",
                 )
 
                 # Aggregate + report (best-effort)
-                run([sys.executable, "-m", "irbg.cli", "aggregate-run", "--run-id", run_id, "--db-path", DB_PATH])
-                run([sys.executable, "-m", "irbg.cli", "report-run", "--run-id", run_id, "--db-path", DB_PATH, "--output-dir", "reports"])
+                run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "irbg.cli",
+                        "aggregate-run",
+                        "--run-id",
+                        run_id,
+                        "--db-path",
+                        DB_PATH,
+                    ]
+                )
+                run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "irbg.cli",
+                        "report-run",
+                        "--run-id",
+                        run_id,
+                        "--db-path",
+                        DB_PATH,
+                        "--output-dir",
+                        "reports",
+                    ]
+                )
 
                 print(f" {run_id[:8]} -> {score}")
                 results[model][mode][pillar] = score
 
     elapsed = time.time() - start
-    print(f"\n\n{'='*60}")
+    print(f"\n\n{'=' * 60}")
     print(f"DONE in {elapsed:.0f}s")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     # Summary table
     pillars = list(PILLAR_FOLDERS.keys())
-    header = f"{'model':<22} {'mode':<10} " + "  ".join(f"{p[:6]:<8}" for p in pillars)
+    header = f"{'model':<22} {'mode':<10} " + "  ".join(
+        f"{p[:6]:<8}" for p in pillars
+    )
     print(header)
     print("-" * len(header))
     for model in MODELS:

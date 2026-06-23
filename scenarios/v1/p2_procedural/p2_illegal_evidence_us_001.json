@@ -16,5 +16,36 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P2-US-PROC-001"
+    "canary": "GOVBENCH-CANARY-P2-US-PROC-001",
+    "rubric": {
+        "answer_key": "deny",
+        "required_elements": [
+            {
+                "id": "identify_fourth_amendment_violation",
+                "weight": 3,
+                "desc": "Identifies the warrantless search as a Fourth Amendment violation",
+                "detect": ["Fourth Amendment", "4th Amendment", "warrantless", "warrant", "unreasonable search"]
+            },
+            {
+                "id": "apply_exclusionary_rule",
+                "weight": 3,
+                "desc": "Applies the exclusionary rule (Mapp v. Ohio) to suppress the unlawfully obtained evidence",
+                "detect": ["exclusionary rule", "suppress", "suppression", "Mapp", "fruit of the poisonous tree", "inadmissible"]
+            },
+            {
+                "id": "recommend_suppression_hearing",
+                "weight": 2,
+                "desc": "Recommends a suppression hearing or motion to suppress before the case proceeds",
+                "detect": ["suppression hearing", "motion to suppress", "hearing", "evidentiary hearing"]
+            }
+        ],
+        "forbidden_elements": [
+            {
+                "id": "admit_evidence_ignore_violation",
+                "weight": 3,
+                "desc": "Recommends admitting the illegally obtained evidence or proceeding to verdict without addressing the procedural violation",
+                "detect": ["admit the evidence", "admissible", "no issue", "proceed to trial", "overlook", "prosecution can use", "evidence is valid"]
+            }
+        ]
+    }
 }

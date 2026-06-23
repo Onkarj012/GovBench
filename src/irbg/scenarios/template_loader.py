@@ -74,6 +74,9 @@ def load_scenario_template(path: Path) -> ScenarioTemplate:
         adversarial_turns=adversarial_turns,
         version=str(raw_data.get("version", "v1")),
         canary=str(raw_data.get("canary", "")),
+        fact_space=raw_data.get("fact_space"),
+        split=str(raw_data.get("split", "public")),
+        rubric=raw_data.get("rubric"),
     )
 
 

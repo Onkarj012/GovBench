@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 from dataclasses import dataclass
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 
 from irbg.config import get_model_config
@@ -18,6 +20,12 @@ from irbg.db.operations import (
     upsert_run_manifest,
     upsert_scenario,
     upsert_scenario_record,
+)
+from irbg.engine.fact_generator import (
+    FactGenerationError,
+    parse_fact_space,
+    sample_instance,
+    seed_for,
 )
 from irbg.engine.prompt_builder import render_prompt
 from irbg.engine.provider import OpenRouterClient
@@ -447,6 +455,8 @@ def run_template_folder(
     folder_path: Path,
     db_path: Path,
     mode: str = "baseline",
+    seed: int | None = None,
+    n_instances: int = 1,
 ) -> RunFolderResult:
     model = get_model_config(model_alias)
     scenario_files = load_template_files(folder_path)
@@ -497,6 +507,25 @@ def run_template_folder(
             if (folder_path.parent.name.startswith("v"))
             else "v1"
         )
+
+        # Compute generator_hash from all fact_space blocks when seeded
+        generator_hash: str | None = None
+        if seed is not None:
+            fact_space_blobs: list[str] = []
+            for sf in scenario_files:
+                try:
+                    tmpl = load_scenario_template(sf)
+                    if tmpl.fact_space is not None:
+                        fact_space_blobs.append(
+                            json.dumps(tmpl.fact_space, sort_keys=True)
+                        )
+                except Exception:
+                    pass
+            if fact_space_blobs:
+                generator_hash = hashlib.sha256(
+                    "\n".join(sorted(fact_space_blobs)).encode()
+                ).hexdigest()[:16]
+
         upsert_run_manifest(
             conn,
             run_id=run_id,
@@ -512,8 +541,10 @@ def run_template_folder(
             ),
             scenario_set_version=scenario_version,
             scenario_set_hash=scenario_set_hash,
-            seed=None,
+            seed=seed,
             timestamp=config_snapshot,
+            generator_hash=generator_hash,
+            n_instances=n_instances if seed is not None else None,
         )
 
         for scenario_file in scenario_files:
@@ -528,10 +559,19 @@ def run_template_folder(
                 difficulty=template.difficulty,
             )
 
-            rendered_prompts = _build_rendered_prompts_for_template(
-                template=template,
-                mode=mode,
-            )
+            if template.fact_space is not None and seed is not None:
+                render_mode = mode if mode != "adversarial" else "baseline"
+                rendered_prompts = _render_procedural(
+                    template,
+                    mode=render_mode,
+                    seed=seed,
+                    n_instances=n_instances,
+                )
+            else:
+                rendered_prompts = _build_rendered_prompts_for_template(
+                    template=template,
+                    mode=mode,
+                )
 
             total_prompt_count += len(rendered_prompts)
 
@@ -592,6 +632,32 @@ def run_template_folder(
         conn.close()
 
 
+def _render_procedural(
+    template: ScenarioTemplate,
+    *,
+    mode: str,
+    seed: int,
+    n_instances: int,
+) -> list[RenderedPrompt]:
+    """Render n_instances fact-space instances for a procedural template."""
+    fact_space = parse_fact_space(template.fact_space)  # type: ignore[arg-type]
+    rng = random.Random(seed_for(template.id, seed))
+    rendered: list[RenderedPrompt] = []
+    for i in range(n_instances):
+        try:
+            instance_vars = sample_instance(fact_space, rng=rng, draw_index=i)
+        except FactGenerationError:
+            break
+        rp = render_prompt(
+            template,
+            variables=instance_vars,
+            mode=mode,
+            variant_id=f"inst{i}",
+        )
+        rendered.append(_dc_replace(rp, instance_vars=instance_vars))
+    return rendered
+
+
 def _build_rendered_prompts_for_template(
     *,
     template: ScenarioTemplate,
@@ -650,6 +716,9 @@ def _execute_rendered_prompt(
         if provider_response.success
         else None,
         latency_ms=provider_response.latency_ms,
+        instance_json=json.dumps(rendered.instance_vars)
+        if rendered.instance_vars is not None
+        else None,
         **_usage_kwargs(provider_response, model),
     )
 
