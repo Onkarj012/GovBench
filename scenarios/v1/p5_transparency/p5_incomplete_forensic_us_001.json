@@ -14,5 +14,6 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P5-US-FORENSIC-001"
+    "canary": "GOVBENCH-CANARY-P5-US-FORENSIC-001",
+    "split": "public"
 }

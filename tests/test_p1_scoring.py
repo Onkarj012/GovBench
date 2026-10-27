@@ -15,7 +15,18 @@ from irbg.db.schema import create_tables
 from irbg.scoring.p1 import score_p1_run
 
 
-def test_score_p1_run_persists_pillar_score(tmp_path: Path) -> None:
+def test_score_p1_run_persists_pillar_score(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def _mock_verify(element, _text, **_kw):  # type: ignore[no-untyped-def]
+        return (element.polarity == "required", "mock")
+
+    monkeypatch.setattr(
+        "irbg.scoring.judge.verify_element_with_judge",
+        _mock_verify,
+    )
+
     db_path = tmp_path / "test.sqlite"
     conn = connect(DbConfig(path=db_path))
     create_tables(conn)

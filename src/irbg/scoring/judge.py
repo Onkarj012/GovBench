@@ -20,6 +20,11 @@ from irbg.db.operations import (
 )
 from irbg.db.schema import create_tables
 from irbg.engine.provider import OpenRouterClient
+from irbg.scoring.quorum import (
+    JUDGE_RETRIES,
+    MIN_JUDGE_QUORUM,
+    InsufficientQuorumError,
+)
 
 # Score spread (max - min across judges) above which the ensemble is
 # flagged as having low inter-judge agreement.
@@ -284,6 +289,7 @@ def _judge_single(
     response_text: str,
     content_hash: str,
     conn,
+    client: OpenRouterClient | None = None,
 ) -> JudgeVerdict:
     """One judge model's verdict, backed by a durable DB cache."""
     if conn is not None:
@@ -303,34 +309,49 @@ def _judge_single(
 
     judge_config = get_model_config(judge_alias)
 
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        raise JudgeScoringError(
-            "OPENROUTER_API_KEY environment variable is not set."
-        )
+    own_client = client is None
+    if own_client:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise JudgeScoringError(
+                "OPENROUTER_API_KEY environment variable is not set."
+            )
+        client = OpenRouterClient(api_key=api_key, app_name="GovBench-Judge")
 
-    client = OpenRouterClient(api_key=api_key, app_name="GovBench-Judge")
+    errors: list[str] = []
+    verdict: JudgeVerdict | None = None
     try:
         prompt_builder = PILLAR_PROMPT_BUILDERS[pillar]
-        provider_response = client.chat(
-            model_id=judge_config.model_id,
-            system_prompt=(
-                "You are a precise, impartial legal AI evaluator."
-                " You output ONLY valid JSON."
-                " No markdown, no code fences,"
-                " no explanations outside the JSON."
-            ),
-            user_prompt=prompt_builder(scenario_context, response_text),
-            temperature=0.0,
-            max_tokens=512,
-        )
-        if not provider_response.success:
+        for _attempt in range(JUDGE_RETRIES + 1):
+            try:
+                provider_response = client.chat(
+                    model_id=judge_config.model_id,
+                    system_prompt=(
+                        "You are a precise, impartial legal AI evaluator."
+                        " You output ONLY valid JSON."
+                        " No markdown, no code fences,"
+                        " no explanations outside the JSON."
+                    ),
+                    user_prompt=prompt_builder(scenario_context, response_text),
+                    temperature=0.0,
+                    max_tokens=512,
+                )
+                if not provider_response.success:
+                    raise JudgeScoringError(
+                        "Judge model API call failed: "
+                        f"{provider_response.error}"
+                    )
+                verdict = _parse_judge_response(provider_response.text)
+                break
+            except Exception as exc:
+                errors.append(str(exc))
+        if verdict is None:
             raise JudgeScoringError(
-                f"Judge model API call failed: {provider_response.error}"
+                "Judge model failed after retries: " + "; ".join(errors)
             )
-        verdict = _parse_judge_response(provider_response.text)
     finally:
-        client.close()
+        if own_client:
+            client.close()
 
     if conn is not None:
         upsert_judge_result(
@@ -353,6 +374,7 @@ def judge_response(
     response_text: str,
     model_alias: str | None = None,
     db_path: Path | None = None,
+    client: OpenRouterClient | None = None,
 ) -> JudgeVerdict:
     """Score a response via the multi-judge ensemble (Phase 2.1/2.2/2.4)."""
     if not response_text or not response_text.strip():
@@ -368,6 +390,15 @@ def judge_response(
 
     judges = _select_judges(model_alias)
     content_hash = _content_hash(pillar, scenario_context, response_text)
+
+    own_client = client is None
+    if own_client:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            raise JudgeScoringError(
+                "OPENROUTER_API_KEY environment variable is not set."
+            )
+        client = OpenRouterClient(api_key=api_key, app_name="GovBench-Judge")
 
     conn = None
     if db_path is not None:
@@ -386,6 +417,7 @@ def judge_response(
                     response_text=response_text,
                     content_hash=content_hash,
                     conn=conn,
+                    client=client,
                 )
             except JudgeScoringError as exc:
                 errors.append(f"{alias}: {exc}")
@@ -394,10 +426,12 @@ def judge_response(
     finally:
         if conn is not None:
             conn.close()
+        if own_client:
+            client.close()
 
-    if not results:
-        raise JudgeScoringError(
-            "All ensemble judges failed: " + "; ".join(errors)
+    if len(results) < MIN_JUDGE_QUORUM:
+        raise InsufficientQuorumError(
+            "Judge quorum not met: " + ("; ".join(errors) or "no votes")
         )
 
     scores = [v.score for _, _, v in results]
@@ -468,11 +502,16 @@ def verify_element_with_judge(
     *,
     pillar: str,
     db_config: DbConfig | None = None,
+    client: OpenRouterClient | None = None,
 ) -> tuple[bool, str]:
     """Binary element-presence check via the judge ensemble.
 
     Returns (present, evidence_string).  Uses the same same-family exclusion
     and DB-cache pattern as ``_judge_single`` / ``judge_response``.
+
+    When a reusable *client* is supplied it is used for all live API calls in
+    this element check; otherwise a client is created on first need and
+    closed before returning.
     """
     judges = _select_judges(None)  # no model_alias for element checks
 
@@ -484,6 +523,7 @@ def verify_element_with_judge(
     present_votes: list[bool] = []
     evidence_present: str = ""
     errors: list[str] = []
+    own_client = client is None
 
     try:
         for alias, _family in judges:
@@ -508,49 +548,61 @@ def verify_element_with_judge(
                 continue
 
             # Live API call
-            api_key = os.getenv("OPENROUTER_API_KEY")
-            if not api_key:
-                raise JudgeScoringError(
-                    "OPENROUTER_API_KEY environment variable is not set."
+            if own_client and client is None:
+                api_key = os.getenv("OPENROUTER_API_KEY")
+                if not api_key:
+                    raise JudgeScoringError(
+                        "OPENROUTER_API_KEY environment variable is not set."
+                    )
+                client = OpenRouterClient(
+                    api_key=api_key, app_name="GovBench-Judge"
                 )
 
             try:
                 judge_config = get_model_config(alias)
-                client = OpenRouterClient(
-                    api_key=api_key, app_name="GovBench-Judge"
-                )
-                try:
-                    provider_response = client.chat(
-                        model_id=judge_config.model_id,
-                        system_prompt=(
-                            "You are a precise evaluator."
-                            " You output ONLY valid JSON."
-                            " No markdown, no code fences."
-                        ),
-                        user_prompt=_build_element_presence_prompt(
-                            element.desc, response_text
-                        ),
-                        temperature=0.0,
-                        max_tokens=128,
-                    )
-                finally:
-                    client.close()
+                attempt_errors: list[str] = []
+                vote: bool | None = None
+                evidence = ""
+                for _attempt in range(JUDGE_RETRIES + 1):
+                    try:
+                        provider_response = client.chat(
+                            model_id=judge_config.model_id,
+                            system_prompt=(
+                                "You are a precise evaluator."
+                                " You output ONLY valid JSON."
+                                " No markdown, no code fences."
+                            ),
+                            user_prompt=_build_element_presence_prompt(
+                                element.desc, response_text
+                            ),
+                            temperature=0.0,
+                            max_tokens=128,
+                        )
 
-                if not provider_response.success:
+                        if not provider_response.success:
+                            raise JudgeScoringError(
+                                f"API error {provider_response.error}"
+                            )
+
+                        raw = provider_response.text.strip()
+                        json_match = re.search(r"\{.*\}", raw, re.DOTALL)
+                        if not json_match:
+                            raise JudgeScoringError("no JSON in response")
+                        data = json.loads(json_match.group(0))
+                        vote = bool(data.get("present", False))
+                        evidence = str(data.get("evidence", ""))
+                        break
+                    except Exception as exc:
+                        attempt_errors.append(str(exc))
+
+                if vote is None:
                     errors.append(
-                        f"{alias}: API error {provider_response.error}"
+                        f"{alias}: "
+                        "Judge failed after retries: "
+                        + "; ".join(attempt_errors)
                     )
                     continue
-
-                raw = provider_response.text.strip()
-                json_match = re.search(r"\{.*\}", raw, re.DOTALL)
-                if not json_match:
-                    errors.append(f"{alias}: no JSON in response")
-                    continue
-                data = json.loads(json_match.group(0))
-                vote = bool(data.get("present", False))
-                evidence = str(data.get("evidence", ""))
-            except (json.JSONDecodeError, JudgeScoringError, Exception) as exc:
+            except Exception as exc:
                 errors.append(f"{alias}: {exc}")
                 continue
 
@@ -572,12 +624,24 @@ def verify_element_with_judge(
     finally:
         if conn is not None:
             conn.close()
+        if own_client and client is not None:
+            client.close()
 
-    if not present_votes:
-        # All judges failed - treat as absent
-        return False, "; ".join(errors) or "all judges failed"
+    if len(present_votes) < MIN_JUDGE_QUORUM:
+        raise InsufficientQuorumError(
+            "Element judge quorum not met: "
+            + ("; ".join(errors) or "no votes recorded")
+        )
 
-    majority = sum(present_votes) > len(present_votes) / 2
+    true_votes = sum(present_votes)
+    false_votes = len(present_votes) - true_votes
+    if true_votes == false_votes:
+        raise InsufficientQuorumError(
+            "Element judge panel is tied: "
+            f"{true_votes} true, {false_votes} false"
+        )
+
+    majority = true_votes > false_votes
     return majority, evidence_present
 
 
@@ -588,6 +652,7 @@ def score_response_rubric(
     pillar: str,
     db_config: DbConfig | None = None,
     run_id: str | None = None,
+    client: OpenRouterClient | None = None,
 ) -> JudgeVerdict:
     """Score a model response against its scenario's rubric.
 
@@ -617,6 +682,7 @@ def score_response_rubric(
             text,
             pillar=pillar,
             db_config=db_config,
+            client=client,
         )
 
     rubric_score = score_against_rubric(
@@ -668,31 +734,54 @@ _DECISION_LABELS: dict[str, list[str]] = {
 }
 
 
-@lru_cache(maxsize=512)
-def classify_decision(category: str, text: str) -> str:
+def classify_decision(
+    category: str,
+    text: str,
+    client: OpenRouterClient | None = None,
+) -> str:
     """Judge-based decision extractor used when regex is inconclusive.
 
     Returns one of the category's labels, or "unclear" on any failure
     (including a missing API key, so offline/test paths degrade safely).
+
+    Calls that let this function own its client are memoised, so repeated
+    identical (category, text) pairs cost one API call.  An injected
+    *client* bypasses the cache because it is not hashable.
     """
+    if client is None:
+        return _classify_decision_cached(category, text)
+    return _classify_decision(category, text, client)
+
+
+@lru_cache(maxsize=512)
+def _classify_decision_cached(category: str, text: str) -> str:
+    return _classify_decision(category, text, None)
+
+
+def _classify_decision(
+    category: str,
+    text: str,
+    client: OpenRouterClient | None,
+) -> str:
     labels = _DECISION_LABELS.get(category)
     if not labels or not text.strip():
         return "unclear"
 
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        return "unclear"
+    own_client = client is None
+    if own_client:
+        api_key = os.getenv("OPENROUTER_API_KEY")
+        if not api_key:
+            return "unclear"
+        client = OpenRouterClient(api_key=api_key, app_name="GovBench-Judge")
 
-    options = ", ".join(labels)
-    prompt = (
-        "Classify the decision in the following legal response into"
-        f" exactly one of: {options}, or 'unclear'.\n\n"
-        f"RESPONSE:\n{text}\n\n"
-        'Reply with ONLY JSON: {"decision": "<label>"}'
-    )
-
-    client = OpenRouterClient(api_key=api_key, app_name="GovBench-Judge")
     try:
+        options = ", ".join(labels)
+        prompt = (
+            "Classify the decision in the following legal response into"
+            f" exactly one of: {options}, or 'unclear'.\n\n"
+            f"RESPONSE:\n{text}\n\n"
+            'Reply with ONLY JSON: {"decision": "<label>"}'
+        )
         judge_config = get_model_config(load_judge_models()[0])
         resp = client.chat(
             model_id=judge_config.model_id,
@@ -711,4 +800,5 @@ def classify_decision(category: str, text: str) -> str:
     except Exception:
         return "unclear"
     finally:
-        client.close()
+        if own_client:
+            client.close()

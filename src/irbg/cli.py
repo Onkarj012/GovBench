@@ -17,6 +17,10 @@ from irbg.analysis.aggregate import (
 )
 from irbg.analysis.compare import compare_runs
 from irbg.analysis.export import write_leaderboard
+from irbg.analysis.fliprate import (
+    FlipRateError,
+    compute_flip_rate_for_run,
+)
 from irbg.analysis.quality import (
     DEFAULT_INVALID_THRESHOLD,
     assess_all_runs,
@@ -58,6 +62,7 @@ from irbg.engine.variant_generator import (
     VariantGenerationError,
     generate_single_prompt_for_variant,
 )
+from irbg.paths import DEFAULT_DB_PATH
 from irbg.scenarios.discovery import ScenarioDiscoveryError
 from irbg.scenarios.template_loader import (
     ScenarioTemplateLoadError,
@@ -91,7 +96,7 @@ def _ensure_database(db_path: Path) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def init_db(db_path: Path) -> None:
@@ -129,7 +134,7 @@ def list_models() -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def list_runs(db_path: Path) -> None:
@@ -162,11 +167,36 @@ def list_runs(db_path: Path) -> None:
     console.print(table)
 
 
+@main.command("mark-stale-runs")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    show_default=True,
+)
+def mark_stale_runs(db_path: Path) -> None:
+    """Mark runs stuck in 'running' status as failed."""
+    _ensure_database(db_path)
+
+    conn = connect(DbConfig(path=db_path))
+    try:
+        cursor = conn.execute(
+            "UPDATE benchmark_runs SET status = 'failed' "
+            "WHERE status = 'running';"
+        )
+        conn.commit()
+        changed = cursor.rowcount
+    finally:
+        conn.close()
+
+    console.print(f"[green]OK[/green] Marked {changed} stale run(s) as failed.")
+
+
 @main.command("quarantine-check")
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -212,7 +242,7 @@ def quarantine_check_cmd(db_path: Path, threshold: float) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -369,7 +399,7 @@ def render_template(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
@@ -412,7 +442,7 @@ def run_once(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
@@ -456,7 +486,7 @@ def run_template_variant(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
@@ -498,7 +528,7 @@ def run_template_group(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
@@ -562,7 +592,7 @@ def run_template_folder_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -633,7 +663,7 @@ def score_p1_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -693,7 +723,7 @@ def score_p2_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -753,7 +783,7 @@ def score_p3_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -813,7 +843,7 @@ def score_p4_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -873,7 +903,7 @@ def score_p5_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -933,7 +963,7 @@ def score_p6_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def aggregate_run_cmd(
@@ -967,7 +997,7 @@ def aggregate_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -1022,7 +1052,7 @@ def calibrate_judge_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def show_run_cmd(
@@ -1074,7 +1104,7 @@ def show_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -1134,7 +1164,7 @@ def report_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def compare_runs_cmd(
@@ -1214,8 +1244,13 @@ def generate_cmd(
 
     for scan_dir in dirs:
         if not scan_dir.is_dir():
-            continue
-        for json_file in sorted(scan_dir.glob("*.json")):
+            raise click.ClickException(f"Split directory not found: {scan_dir}")
+        json_files = sorted(scan_dir.glob("*.json"))
+        if not json_files:
+            raise click.ClickException(
+                f"No scenario files found in split directory: {scan_dir}"
+            )
+        for json_file in json_files:
             try:
                 template = load_scenario_template(json_file)
             except ScenarioTemplateLoadError as exc:
@@ -1314,7 +1349,7 @@ def generate_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def explain_score_cmd(run_id: str, db_path: Path) -> None:
@@ -1422,7 +1457,7 @@ def canary_check_cmd(scenario_folder: Path) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def compute_ci_cmd(model_alias: str, mode: str, db_path: Path) -> None:
@@ -1472,7 +1507,7 @@ def compute_ci_cmd(model_alias: str, mode: str, db_path: Path) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def robustness_delta_cmd(model_alias: str, mode: str, db_path: Path) -> None:
@@ -1513,7 +1548,7 @@ def robustness_delta_cmd(model_alias: str, mode: str, db_path: Path) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def compare_models_cmd(
@@ -1567,7 +1602,7 @@ def compare_models_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def verify_coverage_cmd(
@@ -1649,6 +1684,49 @@ def verify_coverage_cmd(
         console.print("[green]Full matrix covered.[/green]")
 
 
+@main.command("flip-rate")
+@click.argument("run_id")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    show_default=True,
+)
+def flip_rate_cmd(run_id: str, db_path: Path) -> None:
+    """Compute judge-free flip-rate metric for a run."""
+    _ensure_database(db_path)
+
+    try:
+        report = compute_flip_rate_for_run(db_path=db_path, run_id=run_id)
+    except FlipRateError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    table = Table(title=f"Flip Rate — {run_id[:12]}…")
+    table.add_column("Pillar")
+    table.add_column("Pairs", justify="right")
+    table.add_column("Decided", justify="right")
+    table.add_column("Flips", justify="right")
+    table.add_column("Flip Rate", justify="right")
+    table.add_column("95% CI", justify="right")
+
+    for pillar, result in report.pillars:
+        ci_text = (
+            f"[{result.ci_low:.4f}, {result.ci_high:.4f}]"
+            if result.n_decided > 0
+            else "N/A"
+        )
+        table.add_row(
+            pillar,
+            str(result.n_pairs),
+            str(result.n_decided),
+            str(result.n_flips),
+            f"{result.flip_rate:.4f}",
+            ci_text,
+        )
+
+    console.print(table)
+
+
 @main.command("run-full-suite")
 @click.option("--model", "model_alias", required=True)
 @click.option(
@@ -1660,7 +1738,7 @@ def verify_coverage_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(

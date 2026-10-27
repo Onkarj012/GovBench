@@ -14,5 +14,6 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P4-IN-SUCCESSION-001"
+    "canary": "GOVBENCH-CANARY-P4-IN-SUCCESSION-001",
+    "split": "public"
 }

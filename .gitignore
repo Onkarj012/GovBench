@@ -234,3 +234,7 @@ docs/
 
 # holdout scenarios (never publish)
 scenarios/holdout/
+
+# local sqlite databases
+*.db
+*.sqlite

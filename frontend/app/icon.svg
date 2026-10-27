@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="GovBench icon">
+  <rect width="512" height="512" rx="72" fill="#151515"/>
+  <g transform="translate(112 96)">
+    <path d="M0 112 28 84v236H0z" fill="#f5f5f5"/>
+    <path d="M52 64 80 36v284H52z" fill="#f5f5f5"/>
+    <path d="M104 32 132 4v316h-28z" fill="#1677ff"/>
+    <path d="M156 4 184 32v288h-28z" fill="#63c995"/>
+    <path d="M208 36 236 64v256h-28z" fill="#f5f5f5"/>
+    <path d="M260 84 288 112v208h-28z" fill="#f5f5f5"/>
+  </g>
+</svg>

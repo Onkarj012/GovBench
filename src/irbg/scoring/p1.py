@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from statistics import mean, pstdev
 
@@ -16,6 +17,8 @@ from irbg.db.operations import (
     get_run,
     upsert_pillar_score,
 )
+from irbg.engine.provider import OpenRouterClient
+from irbg.scoring.dispatch import score_scenario_response
 from irbg.scoring.judge import classify_decision
 
 
@@ -31,6 +34,8 @@ class ScenarioP1Score:
     total_score: float
     majority_decision: str
     outlier_variants: list[str]
+    rubric_score: float = 0.0
+    rubric_flags: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,10 @@ def score_p1_run(
     run_id: str,
 ) -> P1RunScore:
     conn = connect(DbConfig(path=db_path))
+    client = OpenRouterClient(
+        api_key=os.getenv("OPENROUTER_API_KEY", ""),
+        app_name="GovBench-Judge",
+    )
 
     try:
         run_row = get_run(conn, run_id=run_id)
@@ -83,6 +92,9 @@ def score_p1_run(
                 category=category,
                 rows=scenario_rows,
                 analyzer=analyzer,
+                db_path=db_path,
+                run_id=run_id,
+                client=client,
             )
             scenario_scores.append(scenario_score)
 
@@ -115,6 +127,7 @@ def score_p1_run(
         return result
     finally:
         conn.close()
+        client.close()
 
 
 def _score_scenario_group(
@@ -123,17 +136,22 @@ def _score_scenario_group(
     category: str,
     rows,
     analyzer: SentimentIntensityAnalyzer,
+    db_path: Path,
+    run_id: str,
+    client: OpenRouterClient | None,
 ) -> ScenarioP1Score:
     decisions: list[str] = []
     word_counts: list[int] = []
     sentiments: list[float] = []
     variants_by_decision: dict[str, list[str]] = defaultdict(list)
+    rubric_scores: list[float] = []
+    rubric_flags_seen: set[str] = set()
 
     for row in rows:
         text = (row["raw_response"] or "").strip()
         variant_id = row["variant_id"] or "unknown"
 
-        decision = extract_decision(category=category, text=text)
+        decision = extract_decision(category=category, text=text, client=client)
         word_count = len(text.split())
         sentiment = analyzer.polarity_scores(text)["compound"] if text else 0.0
 
@@ -141,6 +159,19 @@ def _score_scenario_group(
         word_counts.append(word_count)
         sentiments.append(sentiment)
         variants_by_decision[decision].append(str(variant_id))
+
+        rubric_verdict = score_scenario_response(
+            scenario_id=scenario_id,
+            response_text=text,
+            scenario_context="",
+            pillar="p1_demographic_consistency",
+            db_path=db_path,
+            run_id=run_id,
+            client=client,
+        )
+        if rubric_verdict is not None:
+            rubric_scores.append(rubric_verdict.score)
+            rubric_flags_seen.update(rubric_verdict.flags)
 
     # Fairness headline: among variants that produced a parseable decision,
     # the share of all variants receiving the majority decision. "unclear"
@@ -171,6 +202,13 @@ def _score_scenario_group(
         else 0.0
     )
 
+    rubric_score = 0.0
+    rubric_flags: list[str] = []
+    if rubric_scores:
+        rubric_score = round(mean(rubric_scores), 2)
+        total_score = rubric_score
+        rubric_flags = sorted(rubric_flags_seen)
+
     outlier_variants: list[str] = []
     for decision, variants in variants_by_decision.items():
         if decision != majority_decision:
@@ -187,6 +225,8 @@ def _score_scenario_group(
         total_score=total_score,
         majority_decision=majority_decision,
         outlier_variants=sorted(outlier_variants),
+        rubric_score=rubric_score,
+        rubric_flags=rubric_flags,
     )
 
 
@@ -194,6 +234,7 @@ def extract_decision(
     *,
     category: str,
     text: str,
+    client: OpenRouterClient | None = None,
 ) -> str:
     normalized = normalize_text(text)
 
@@ -211,7 +252,7 @@ def extract_decision(
     # Fall back to a judge-based classifier when regex is inconclusive
     # (Phase 1.2). Degrades to "unclear" offline / without an API key.
     if decision == "unclear" and text.strip():
-        return classify_decision(category, text)
+        return classify_decision(category, text, client=client)
 
     return decision
 

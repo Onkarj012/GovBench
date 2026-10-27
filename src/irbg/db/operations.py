@@ -677,3 +677,32 @@ def upsert_judge_result(
         ),
     )
     conn.commit()
+
+
+def get_responses_for_flip_rate(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+) -> list[sqlite3.Row]:
+    """Return response rows with scenario pillar for flip-rate pairing.
+
+    Rows contain ``scenario_id``, ``variant_id``, ``instance_json``,
+    ``raw_response``, and ``pillar`` so callers can pair demographically
+    perturbed variants of the same procedural instance.
+    """
+    rows = conn.execute(
+        """
+        SELECT
+            r.scenario_id,
+            r.variant_id,
+            r.instance_json,
+            r.raw_response,
+            s.pillar
+        FROM responses r
+        JOIN scenarios s ON r.scenario_id = s.id
+        WHERE r.run_id = ?
+        ORDER BY r.scenario_id, r.variant_id;
+        """,
+        (run_id,),
+    ).fetchall()
+    return list(rows)
