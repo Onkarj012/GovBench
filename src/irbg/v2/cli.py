@@ -1,0 +1,172 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import click
+
+from irbg.paths import PROJECT_ROOT
+from irbg.scenarios.v2 import ScenarioV2, ScenarioV2Error, load_v2_folder
+from irbg.v2.classify import classify_run
+from irbg.v2.config import STANCES, V2ConfigError, load_v2_config
+from irbg.v2.db import DEFAULT_DB, connect_v2, save_manifest
+from irbg.v2.matrix import build_export
+from irbg.v2.runner import build_manifest, run_model
+
+PUBLIC_DIR = PROJECT_ROOT / "scenarios" / "v2"
+PRIVATE_DIR = PROJECT_ROOT / "scenarios" / "holdout" / "v2"
+
+
+def _scenarios(splits: tuple[str, ...]) -> list[ScenarioV2]:
+    """Load public and private v2 scenarios for the requested splits."""
+    found: list[ScenarioV2] = []
+    for folder in (PUBLIC_DIR, PRIVATE_DIR):
+        if folder.exists():
+            found.extend(load_v2_folder(folder))
+    return [s for s in found if s.split in splits]
+
+
+def _log(msg: str) -> None:
+    """Print a progress line immediately."""
+    click.echo(msg)
+
+
+@click.group("v2")
+def v2() -> None:
+    """GovBench v2: role x pressure episodes."""
+
+
+@v2.command("run")
+@click.option("--run-name", required=True)
+@click.option("--models", "model_list", default="", help="Comma list.")
+@click.option("--seeds", type=int, default=None, help="Override seeds.")
+@click.option("--stance", type=click.Choice(["both", *STANCES]), default="both")
+@click.option("--splits", default="public,private")
+@click.option("--only", default="", help="Comma list of scenario ids.")
+@click.option("--max-usd", type=float, default=10.0)
+@click.option("--db", "db_path", type=click.Path(path_type=Path))
+def run_cmd(
+    run_name: str,
+    model_list: str,
+    seeds: int | None,
+    stance: str,
+    splits: str,
+    only: str,
+    max_usd: float,
+    db_path: Path | None,
+) -> None:
+    """Run pending episodes for each model (resumable, cost-capped)."""
+    try:
+        cfg = load_v2_config()
+        scenarios = _scenarios(tuple(splits.split(",")))
+    except (V2ConfigError, ScenarioV2Error) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if only:
+        wanted = set(only.split(","))
+        scenarios = [s for s in scenarios if s.id in wanted]
+    aliases = model_list.split(",") if model_list else list(cfg.models)
+    unknown = [a for a in aliases if a not in cfg.models]
+    if unknown:
+        raise click.ClickException(f"unknown models: {unknown}")
+    stances = STANCES if stance == "both" else (stance,)
+    conn = connect_v2(db_path)
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM runs WHERE run_name = ?", (run_name,)
+        ).fetchone():
+            save_manifest(
+                conn, run_name, build_manifest(cfg, scenarios, run_name)
+            )
+        for alias in aliases:
+            counts = run_model(
+                conn=conn,
+                cfg=cfg,
+                model=cfg.models[alias],
+                scenarios=scenarios,
+                run_name=run_name,
+                seeds=seeds,
+                stances=stances,
+                max_usd=max_usd,
+                log=_log,
+            )
+            _log(f"[{alias}] done {counts}")
+    finally:
+        conn.close()
+
+
+@v2.command("classify")
+@click.option("--run-name", required=True)
+@click.option("--workers", type=int, default=4)
+@click.option("--db", "db_path", type=click.Path(path_type=Path))
+def classify_cmd(run_name: str, workers: int, db_path: Path | None) -> None:
+    """Collect blind panel verdicts and classify every episode."""
+    cfg = load_v2_config()
+    scenarios = {s.id: s for s in _scenarios(("public", "private"))}
+    conn = connect_v2(db_path)
+    try:
+        counts = classify_run(
+            conn=conn,
+            run_name=run_name,
+            scenarios=scenarios,
+            judges=cfg.judges,
+            workers=workers,
+            log=_log,
+        )
+    finally:
+        conn.close()
+    _log(json.dumps(counts, indent=2, sort_keys=True))
+
+
+@v2.command("export")
+@click.option("--run-name", required=True)
+@click.option(
+    "--out",
+    type=click.Path(path_type=Path),
+    default=PROJECT_ROOT / "frontend" / "public" / "data" / "v2.json",
+)
+@click.option("--include-draft", is_flag=True, help="Show unreviewed cases.")
+@click.option("--db", "db_path", type=click.Path(path_type=Path))
+def export_cmd(
+    run_name: str, out: Path, include_draft: bool, db_path: Path | None
+) -> None:
+    """Write the site JSON for a classified run."""
+    cfg = load_v2_config()
+    scenarios = {s.id: s for s in _scenarios(("public", "private"))}
+    conn = connect_v2(db_path)
+    try:
+        data = build_export(
+            conn=conn,
+            cfg=cfg,
+            scenarios=scenarios,
+            run_name=run_name,
+            include_draft=include_draft,
+        )
+    finally:
+        conn.close()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(data, indent=1, sort_keys=True))
+    _log(f"wrote {out} ({len(data['models'])} models)")
+
+
+@v2.command("status")
+@click.option("--run-name", required=True)
+@click.option("--db", "db_path", type=click.Path(path_type=Path))
+def status_cmd(run_name: str, db_path: Path | None) -> None:
+    """Episode and classification counts per model."""
+    conn = connect_v2(db_path or DEFAULT_DB)
+    try:
+        rows = conn.execute(
+            "SELECT e.model_alias, e.status, COUNT(*) n, "
+            "SUM(e.cost_usd) cost, COUNT(c.class) classified "
+            "FROM episodes e LEFT JOIN classifications c "
+            "ON c.episode_id = e.id WHERE e.run_name = ? "
+            "GROUP BY 1, 2 ORDER BY 1, 2",
+            (run_name,),
+        ).fetchall()
+    finally:
+        conn.close()
+    for r in rows:
+        _log(
+            f"{r['model_alias']:22} {r['status']:9} n={r['n']:4} "
+            f"classified={r['classified']:4} cost=${r['cost'] or 0:.3f}"
+        )
