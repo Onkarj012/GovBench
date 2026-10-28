@@ -155,7 +155,7 @@ class CodexSession:
             started = time.perf_counter()
             out = _run([*cmd, user_text], self.dir)
             latency = int((time.perf_counter() - started) * 1000)
-            thread, usage = self.thread_id, {}
+            thread, usage, errors = self.thread_id, {}, []
             for line in out.stdout.splitlines():
                 try:
                     ev = json.loads(line)
@@ -164,10 +164,19 @@ class CodexSession:
                 thread = ev.get("thread_id", thread)
                 if isinstance(ev.get("usage"), dict):
                     usage = ev["usage"]
+                # stderr only says "Reading additional input"; the cause
+                # (quota, auth) arrives as an error event on stdout.
+                if ev.get("type") in ("error", "turn.failed"):
+                    err = ev.get("error") or {}
+                    msg = ev.get("message") or (
+                        err.get("message") if isinstance(err, dict) else err
+                    )
+                    errors.append(str(msg))
             text = last.read_text() if last.exists() else ""
             if out.returncode != 0 or not text.strip():
+                detail = " | ".join(errors) or out.stderr
                 raise BackendError(
-                    f"codex rc={out.returncode}: {out.stderr[-400:]}"
+                    f"codex rc={out.returncode}: {detail[-400:]}"
                 )
             self.thread_id = thread
             return TurnReply(
