@@ -1,128 +1,153 @@
-export type PillarKey =
-  | "p1_demographic_consistency"
-  | "p2_procedural_integrity"
-  | "p3_corruption_resistance"
-  | "p4_jurisdictional_awareness"
-  | "p5_transparency_explainability"
-  | "p6_minority_protection";
+import raw from "@/public/data/v2.json";
 
-export const PILLARS: Record<PillarKey, string> = {
-  p1_demographic_consistency: "P1: Demographic Consistency",
-  p2_procedural_integrity: "P2: Procedural Integrity",
-  p3_corruption_resistance: "P3: Corruption Resistance",
-  p4_jurisdictional_awareness: "P4: Jurisdictional Awareness",
-  p5_transparency_explainability: "P5: Transparency & Explainability",
-  p6_minority_protection: "P6: Minority Protection",
-};
+/** Stances the run tests. "Both" pools these two. */
+export const STANCES = ["decision_maker", "advisor"];
 
-export const FAMILY_COLOR: Record<string, string> = {
-  openai: "#10a37f",
-  anthropic: "#d97757",
-  google: "#4285f4",
-  deepseek: "#6366f1",
-  moonshotai: "#8b5cf6",
-  "z-ai": "#ec4899",
-  unknown: "#6b7280",
-};
-
-export const GRADE_COLOR: Record<string, string> = {
-  A: "#22c55e",
-  B: "#84cc16",
-  C: "#eab308",
-  D: "#f97316",
-  F: "#ef4444",
-};
-
-export function gradeFromScore(score: number): string {
-  if (score >= 90) return "A";
-  if (score >= 80) return "B";
-  if (score >= 70) return "C";
-  if (score >= 60) return "D";
-  return "F";
+/** One behaviour rate: count, rate (null when n is 0), and 95% Wilson interval. */
+export interface Rate {
+  k: number;
+  rate: number | null;
+  ci: number[] | null;
 }
 
-export interface RunRecord {
-  run_id: string;
-  pillar: PillarKey;
-  mode: "baseline" | "pressure" | "adversarial";
-  score: number;
-  avg_latency_ms: number;
-  avg_tokens: number;
-  parity_gap?: number;
-  judge_disagreement?: boolean;
-}
-
-export interface PillarCI {
-  pillar: PillarKey;
+/** Results for one slice: a model, a stance, a role, or a pressure. */
+export interface Summary {
+  episodes: number;
   n: number;
-  mean: number;
-  ci_low: number;
-  ci_high: number;
+  turn0_accuracy: number | null;
+  break: Rate;
+  bend: Rate;
+  hold: Rate;
+  hold_silent: Rate;
+  refuse: Rate;
+  escalate: Rate;
+  unresolved: number;
+  median_turns_to_break: number | null;
+  rationalized_share: number | null;
+  classes: Record<string, number>;
 }
 
-export interface RobustnessDelta {
-  pillar: PillarKey;
-  baseline: number;
-  pressure: number;
-  delta: number;
+/** Run settings for one model, from the manifest. */
+export interface ModelManifest {
+  backend: string;
+  model_id: string;
+  seeds: number;
+  temperature: number | null;
 }
 
-export interface ModelRecord {
+/** One scenario in the run. */
+export interface Scenario {
+  id: string;
+  role: string;
+  pressure: string;
+  decision_type: string;
+  review_status: string;
+  answer: string;
+  pressure_direction: string;
+}
+
+/** One model with its overall summary and breakdowns. */
+export interface ModelEntry {
   alias: string;
-  displayName: string;
+  name: string;
   family: string;
-  runs: RunRecord[];
-  pillarCI?: PillarCI[];
-  robustness?: RobustnessDelta[];
-  coverageRatio?: number;
+  backend: string;
+  summary: Summary;
+  by_stance: Record<string, Summary>;
+  by_role: Record<string, Summary>;
+  by_pressure: Record<string, Summary>;
+  private_summary: Summary;
 }
 
-export const MODELS: ModelRecord[] = [
-  { alias: "gpt-4o", displayName: "GPT-4o", family: "openai", runs: [] },
-  { alias: "gpt-oss-120b", displayName: "GPT-OSS 120B", family: "openai", runs: [] },
-  { alias: "claude-sonnet-4.6", displayName: "Claude Sonnet 4.6", family: "anthropic", runs: [] },
-  { alias: "deepseek-v3", displayName: "DeepSeek V3", family: "deepseek", runs: [] },
-  { alias: "deepseek-v4-flash", displayName: "DeepSeek V4 Flash", family: "deepseek", runs: [] },
-  { alias: "gemini-3.1-flash-lite", displayName: "Gemini 3.1 Flash Lite", family: "google", runs: [] },
-  { alias: "kimi-k2.6", displayName: "Kimi K2.6", family: "moonshotai", runs: [] },
-  { alias: "glm-4.7-flash", displayName: "GLM 4.7 Flash", family: "z-ai", runs: [] },
-];
-
-export function getPillarScores(model: ModelRecord): Partial<Record<PillarKey, number>> {
-  const out: Partial<Record<PillarKey, number>> = {};
-  for (const run of model.runs) {
-    if (!(run.pillar in out)) {
-      out[run.pillar] = run.score;
-    }
-  }
-  return out;
+/** Shape of public/data/v2.json. The compiler checks the file against this on build. */
+export interface V2Data {
+  version: string;
+  generated_at: string;
+  run_name: string;
+  include_draft: boolean;
+  manifest: {
+    timestamp: string;
+    git_sha: string;
+    scenario_count: number;
+    models: Record<string, ModelManifest>;
+    cli_versions: Record<string, string>;
+  };
+  judges: string[];
+  scenarios: Scenario[];
+  flagged_scenarios: string[];
+  models: ModelEntry[];
+  cells: Record<string, Summary>;
 }
 
-export function getCompositeScore(model: ModelRecord): number {
-  const scores = Object.values(getPillarScores(model));
-  if (!scores.length) return 0;
-  return scores.reduce((a, b) => a + (b ?? 0), 0) / scores.length;
+export const data: V2Data = raw;
+
+/** Finds a model by alias. */
+export function findModel(alias: string): ModelEntry | undefined {
+  return data.models.find((m) => m.alias === alias);
 }
 
-export interface LeaderboardEntry {
-  alias: string;
-  displayName: string;
-  family: string;
-  composite: number;
-  pillarScores: Partial<Record<PillarKey, number>>;
-  runs: RunRecord[];
+/** Summaries for one matrix position, one per stance that has a cell. */
+export function cellsFor(
+  alias: string,
+  role: string,
+  pressure: string,
+  stances: string[],
+): Summary[] {
+  return stances.flatMap((stance) => {
+    const cell: Summary | undefined =
+      data.cells[`${alias}|${role}|${pressure}|${stance}`];
+    return cell ? [cell] : [];
+  });
 }
 
-export function getLeaderboard(): LeaderboardEntry[] {
-  return MODELS
-    .map((m) => ({
-      alias: m.alias,
-      displayName: m.displayName,
-      family: m.family,
-      composite: getCompositeScore(m),
-      pillarScores: getPillarScores(m),
-      runs: m.runs,
-    }))
-    .filter((e) => e.composite > 0)
-    .sort((a, b) => b.composite - a.composite);
+/** One rate pooled over cells as sum of k over sum of n. Null when there are no episodes. */
+export function pooledRate(
+  cells: Summary[],
+  metric: "break" | "bend" | "escalate",
+): number | null {
+  const n = cells.reduce((total, c) => total + c.n, 0);
+  if (n === 0) return null;
+  return cells.reduce((total, c) => total + c[metric].k, 0) / n;
+}
+
+/** Roles that appear in scenarios or results, sorted. */
+export function roleAxis(): string[] {
+  return sortedUnique([
+    ...data.scenarios.map((s) => s.role),
+    ...data.models.flatMap((m) => Object.keys(m.by_role)),
+  ]);
+}
+
+/** Pressures that appear in scenarios or results, sorted. */
+export function pressureAxis(): string[] {
+  return sortedUnique([
+    ...data.scenarios.map((s) => s.pressure),
+    ...data.models.flatMap((m) => Object.keys(m.by_pressure)),
+  ]);
+}
+
+/** Turns a snake_case key into plain words. */
+export function humanize(key: string): string {
+  if (key === "ias") return "IAS";
+  return key.replace(/_/g, " ");
+}
+
+/** Formats a 0 to 1 rate as a whole percent, or a dash when there is no value. */
+export function pct(rate: number | null): string {
+  return rate === null ? "—" : `${Math.round(rate * 100)}%`;
+}
+
+/** Formats an ISO timestamp in IST. */
+export function formatIST(iso: string): string {
+  const when = new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  }).format(new Date(iso));
+  return `${when} IST`;
+}
+
+/** Sorted list with duplicates removed. */
+function sortedUnique(values: string[]): string[] {
+  return [...new Set(values)].sort();
 }

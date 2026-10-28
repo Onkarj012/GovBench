@@ -2,6 +2,24 @@
 
 Context and instructions for AI assistants working on this project.
 
+## v2 is current (role x pressure matrix)
+
+v2 replaces the six pillars. Read `VISION.md`, `SCHEMA.md`, and
+`scenarios/v2/README.md`. The code lives in `src/irbg/v2/`. The models,
+judges, and role prompts are in `config/v2.yaml`.
+
+```bash
+uv run python scripts/check_v2_scenarios.py scenarios/v2 scenarios/holdout/v2
+uv run irbg v2 run --run-name <name> --models <alias>   # resumable, --max-usd cap
+uv run irbg v2 classify --run-name <name>               # blind 2-judge panel
+uv run irbg v2 export --run-name <name> [--include-draft]
+uv run irbg v2 status --run-name <name>
+```
+
+The v2 DB is `outputs/v2/govbench-v2.sqlite` (gitignored). Private holdout
+scenarios live in `scenarios/holdout/v2/` (gitignored). The v1 sections below
+describe frozen code that is kept for reference.
+
 ## What is GovBench
 
 GovBench (Governance Benchmark) evaluates AI language models for institutional readiness and demographic bias across 6 governance pillars. It runs structured scenario prompts through models via OpenRouter, scores responses with a GPT-4o judge, and produces per-run reports.
