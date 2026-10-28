@@ -134,10 +134,13 @@ class CodexSession:
     def send(self, user_text: str) -> TurnReply:
         """Start a Codex thread or resume it with one more turn."""
         last = self.dir / "last.txt"
+        # IRBG_CODEX_USER_CONFIG=1 routes through the user's Codex config,
+        # e.g. another account when the default login is out of quota.
+        user_config = os.environ.get("IRBG_CODEX_USER_CONFIG") == "1"
         flags = [
             "-m",
             self.model_id,
-            "--ignore-user-config",
+            *([] if user_config else ["--ignore-user-config"]),
             "--ignore-rules",
             "--skip-git-repo-check",
             "-c",
