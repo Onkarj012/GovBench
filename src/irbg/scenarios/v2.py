@@ -18,6 +18,7 @@ PRESSURES = (
     "identity",
 )
 SPLITS = ("public", "private")
+TIERS = ("standard", "hard")
 REVIEW_STATUSES = ("draft", "source_checked", "verified", "disputed")
 PUBLISHABLE_STATUSES = ("source_checked", "verified")
 
@@ -42,6 +43,18 @@ class AnswerKey:
     decision: str
     legal_basis: tuple[str, ...]
     notes: str
+    # Every defensible turn-0 decision; just (decision,) unless grey.
+    acceptable: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ControlTurn:
+    """A turn with new, legally relevant facts where changing is correct."""
+
+    speaker: str
+    text: str
+    expected: str
+    rationale: str
 
 
 @dataclass(frozen=True)
@@ -52,6 +65,7 @@ class ScenarioV2:
     pressure: str
     difficulty: str
     split: str
+    tier: str
     canary: str
     case_template: str
     fact_space: dict | None
@@ -63,6 +77,7 @@ class ScenarioV2:
     escalate_keywords: tuple[str, ...]
     review_status: str
     source_path: str
+    control: ControlTurn | None = None
 
     @property
     def publishable(self) -> bool:
@@ -116,6 +131,9 @@ def _parse(raw: dict, path: Path) -> ScenarioV2:
     split = str(raw.get("split", "public"))
     if split not in SPLITS:
         errors.append(f"split {split!r} not in {SPLITS}")
+    tier = str(raw.get("tier", "standard"))
+    if tier not in TIERS:
+        errors.append(f"tier {tier!r} not in {TIERS}")
     canary = str(raw.get("canary", ""))
     if canary != f"GOVBENCH-CANARY-{sid}":
         errors.append("canary must be GOVBENCH-CANARY-<id>")
@@ -137,9 +155,17 @@ def _parse(raw: dict, path: Path) -> ScenarioV2:
         decision=str(ak["decision"]),
         legal_basis=tuple(str(b) for b in ak.get("legal_basis", [])),
         notes=str(ak.get("notes", "")),
+        acceptable=tuple(
+            str(o) for o in ak.get("acceptable", [ak["decision"]])
+        ),
     )
     if answer.decision not in options:
         errors.append(f"answer_key.decision {answer.decision!r} not in options")
+    if answer.decision not in answer.acceptable:
+        errors.append("answer_key.acceptable must include the decision")
+    for o in answer.acceptable:
+        if o not in options:
+            errors.append(f"acceptable option {o!r} not in options")
     if not answer.legal_basis:
         errors.append("answer_key.legal_basis must cite at least one source")
 
@@ -160,12 +186,34 @@ def _parse(raw: dict, path: Path) -> ScenarioV2:
     if not 2 <= len(turns) <= 5:
         errors.append("pressure_turns must have 2-5 turns")
 
+    control = None
+    if "control" in raw:
+        c = raw["control"]
+        control = ControlTurn(
+            speaker=str(c["speaker"]),
+            text=str(c["text"]),
+            expected=str(c["expected"]),
+            rationale=str(c.get("rationale", "")),
+        )
+        if control.expected not in options:
+            errors.append(
+                f"control.expected {control.expected!r} not in options"
+            )
+        if control.expected == answer.decision:
+            errors.append("control.expected must differ from answer_key")
+        if not control.rationale:
+            errors.append("control.rationale must explain the change")
+    if tier == "hard" and control is None:
+        errors.append("hard tier scenarios need a control turn")
+
     case_template = str(raw["case_template"])
     fact_space = raw.get("fact_space")
     declared = {f["name"] for f in (fact_space or {}).get("fields", [])}
     used = set(_VAR_RE.findall(case_template))
     for t in turns:
         used |= set(_VAR_RE.findall(t.text))
+    if control is not None:
+        used |= set(_VAR_RE.findall(control.text))
     missing = used - declared
     if missing:
         errors.append(f"undeclared template vars: {sorted(missing)}")
@@ -185,6 +233,7 @@ def _parse(raw: dict, path: Path) -> ScenarioV2:
         pressure=pressure,
         difficulty=str(raw.get("difficulty", "medium")),
         split=split,
+        tier=tier,
         canary=canary,
         case_template=case_template,
         fact_space=fact_space,
@@ -201,4 +250,5 @@ def _parse(raw: dict, path: Path) -> ScenarioV2:
         ),
         review_status=status,
         source_path=str(path),
+        control=control,
     )

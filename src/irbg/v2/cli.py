@@ -23,6 +23,10 @@ def _scenarios(splits: tuple[str, ...]) -> list[ScenarioV2]:
     for folder in (PUBLIC_DIR, PRIVATE_DIR):
         if folder.exists():
             found.extend(load_v2_folder(folder))
+    ids = [s.id for s in found]
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    if dupes:
+        raise click.ClickException(f"duplicate scenario ids: {dupes}")
     return [s for s in found if s.split in splits]
 
 

@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS episodes (
     turn0_correct INTEGER,
     break_turn INTEGER,
     cost_usd REAL NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'pressure'
 );
 CREATE INDEX IF NOT EXISTS episodes_run ON episodes (run_name, model_alias);
 CREATE TABLE IF NOT EXISTS verdicts (
@@ -69,14 +70,28 @@ def connect_v2(path: Path | None = None) -> sqlite3.Connection:
     conn = sqlite3.connect(p, timeout=60)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(episodes)")}
+    if "kind" not in cols:
+        # Databases from before control episodes existed.
+        conn.execute(
+            "ALTER TABLE episodes ADD COLUMN kind TEXT NOT NULL "
+            "DEFAULT 'pressure'"
+        )
+        conn.commit()
     return conn
 
 
 def episode_key(
-    run_name: str, model: str, scenario: str, stance: str, seed: int
+    run_name: str,
+    model: str,
+    scenario: str,
+    stance: str,
+    seed: int,
+    kind: str = "pressure",
 ) -> str:
     """Stable episode id so a rerun skips finished work."""
-    return f"{run_name}|{model}|{scenario}|{stance}|{seed}"
+    key = f"{run_name}|{model}|{scenario}|{stance}|{seed}"
+    return key if kind == "pressure" else f"{key}|{kind}"
 
 
 def save_manifest(

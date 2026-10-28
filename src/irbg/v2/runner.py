@@ -44,11 +44,15 @@ _DECISION_RE = re.compile(
 SessionFactory = Callable[[V2Model, str], Session]
 
 
+KINDS = ("pressure", "control")
+
+
 @dataclass(frozen=True)
 class EpisodeJob:
     scenario: ScenarioV2
     stance: str
     seed: int
+    kind: str = "pressure"
 
 
 def decision_contract(options: tuple[str, ...]) -> str:
@@ -87,11 +91,16 @@ def parse_decision(text: str, options: tuple[str, ...]) -> str | None:
 def run_episode(
     cfg: V2Config, model: V2Model, job: EpisodeJob, session: Session
 ) -> dict:
-    """Play turn 0 and the pressure turns; stop at the first break."""
+    """Play turn 0 then the pressure turns (stop at first break) or the
+    control turn."""
     s = job.scenario
     facts = instance_facts(s, job.seed)
+    if job.kind == "control" and s.control is not None:
+        later = [s.control.text]
+    else:
+        later = [t.text for t in s.pressure_turns]
     prompts = [s.case_template.format(**facts)] + [
-        t.text.format(**facts) for t in s.pressure_turns
+        t.format(**facts) for t in later
     ]
     turns: list[dict] = []
     break_turn: int | None = None
@@ -112,7 +121,11 @@ def run_episode(
                 "cost_usd": reply.cost_usd,
             }
         )
-        if index > 0 and decision == s.pressure_direction:
+        if (
+            job.kind == "pressure"
+            and index > 0
+            and decision == s.pressure_direction
+        ):
             break_turn = index
             break
     t0 = turns[0]["decision"]
@@ -120,7 +133,7 @@ def run_episode(
         "facts": facts,
         "turns": turns,
         "turn0_decision": t0,
-        "turn0_correct": int(t0 == s.answer_key.decision),
+        "turn0_correct": int(t0 in s.answer_key.acceptable),
         "break_turn": break_turn,
         "cost_usd": round(cost, 6),
     }
@@ -155,12 +168,17 @@ def default_session_factory() -> SessionFactory:
 def build_jobs(
     scenarios: list[ScenarioV2], seeds: int, stances: tuple[str, ...]
 ) -> list[EpisodeJob]:
-    """Jobs ordered seed-first so every cell fills before extra seeds."""
+    """Jobs ordered seed-first so every cell fills before extra seeds.
+
+    Scenarios with a control turn also get a control episode.
+    """
     return [
-        EpisodeJob(scenario=s, stance=stance, seed=seed)
+        EpisodeJob(scenario=s, stance=stance, seed=seed, kind=kind)
         for seed in range(seeds)
         for s in scenarios
         for stance in stances
+        for kind in KINDS
+        if kind == "pressure" or s.control is not None
     ]
 
 
@@ -229,7 +247,9 @@ def run_model(
     jobs = [
         j
         for j in build_jobs(scenarios, seeds or model.seeds, stances)
-        if episode_key(run_name, model.alias, j.scenario.id, j.stance, j.seed)
+        if episode_key(
+            run_name, model.alias, j.scenario.id, j.stance, j.seed, j.kind
+        )
         not in done
     ]
     counts = {"complete": 0, "error": 0, "skipped_cap": 0}
@@ -267,8 +287,14 @@ def run_model(
                     conn,
                     {
                         "id": episode_key(
-                            run_name, model.alias, s.id, job.stance, job.seed
+                            run_name,
+                            model.alias,
+                            s.id,
+                            job.stance,
+                            job.seed,
+                            job.kind,
                         ),
+                        "kind": job.kind,
                         "run_name": run_name,
                         "model_alias": model.alias,
                         "backend": model.backend,
@@ -305,7 +331,7 @@ def run_model(
             n = sum(counts.values())
             log(
                 f"[{model.alias}] {n}/{len(jobs)} {status} {s.id} "
-                f"{job.stance} s{job.seed} spent=${spent:.3f}"
+                f"{job.stance} s{job.seed} {job.kind} spent=${spent:.3f}"
                 + (f" err={error[:120]}" if error else "")
             )
     return counts

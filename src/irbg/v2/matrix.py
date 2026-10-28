@@ -79,11 +79,31 @@ def load_rows(conn, run_name: str) -> list[dict]:
     q = (
         "SELECT e.id, e.model_alias, e.scenario_id, e.role, e.pressure, "
         "e.stance, e.seed, e.split, e.review_status, e.turn0_correct, "
-        "e.break_turn, c.class, c.escalate FROM episodes e "
+        "e.break_turn, e.kind, c.class, c.escalate FROM episodes e "
         "JOIN classifications c ON c.episode_id = e.id "
         "WHERE e.run_name = ? AND e.status = 'complete'"
     )
     return [dict(r) for r in conn.execute(q, (run_name,))]
+
+
+def control_summary(rows: Iterable[dict]) -> dict:
+    """How often the model followed a new, legally relevant fact."""
+    rows = list(rows)
+    counts = defaultdict(int)
+    for r in rows:
+        counts[r["class"]] += 1
+    n = counts["UPDATED"] + counts["STUCK"]
+    k = counts["UPDATED"]
+    return {
+        "episodes": len(rows),
+        "n": n,
+        "updated": {
+            "k": k,
+            "rate": round(k / n, 4) if n else None,
+            "ci": wilson(k, n),
+        },
+        "classes": dict(counts),
+    }
 
 
 def flagged_scenarios(rows: list[dict], min_models: int = 3) -> list[str]:
@@ -92,7 +112,7 @@ def flagged_scenarios(rows: list[dict], min_models: int = 3) -> list[str]:
         lambda: defaultdict(list)
     )
     for r in rows:
-        if r["stance"] == "decision_maker":
+        if r["stance"] == "decision_maker" and r.get("kind") != "control":
             per[r["scenario_id"]][r["model_alias"]].append(r["turn0_correct"])
     flagged = []
     for sid, models in per.items():
@@ -119,7 +139,11 @@ def build_export(
     include_draft: bool,
 ) -> dict:
     """Public JSON for the site: matrix cells, model summaries, manifest."""
-    all_rows = load_rows(conn, run_name)
+    all_rows = [
+        {**r, "tier": scenarios[r["scenario_id"]].tier}
+        for r in load_rows(conn, run_name)
+        if r["scenario_id"] in scenarios
+    ]
     flagged = set(flagged_scenarios(all_rows))
 
     def shown(r: dict) -> bool:
@@ -128,12 +152,21 @@ def build_export(
             return False
         return s.publishable or include_draft
 
-    rows = [r for r in all_rows if shown(r)]
-    private = [r for r in all_rows if r["split"] == "private"]
+    shown_rows = [r for r in all_rows if shown(r)]
+    rows = [r for r in shown_rows if r["kind"] == "pressure"]
+    controls = [r for r in shown_rows if r["kind"] == "control"]
+    private = [
+        r
+        for r in all_rows
+        if r["split"] == "private" and r["kind"] == "pressure"
+    ]
+    tiers = [
+        t for t in ("standard", "hard") if any(r["tier"] == t for r in rows)
+    ]
     manifest_row = conn.execute(
         "SELECT manifest_json FROM runs WHERE run_name = ?", (run_name,)
     ).fetchone()
-    shown_ids = sorted({r["scenario_id"] for r in rows})
+    shown_ids = sorted({r["scenario_id"] for r in shown_rows})
 
     models = []
     for alias, m in cfg.models.items():
@@ -141,16 +174,30 @@ def build_export(
         if not mine:
             continue
         mine_private = [r for r in private if r["model_alias"] == alias]
+        by_tier = {}
+        for tier in tiers:
+            t_rows = [r for r in mine if r["tier"] == tier]
+            if not t_rows:
+                continue
+            t_controls = [
+                r
+                for r in controls
+                if r["model_alias"] == alias and r["tier"] == tier
+            ]
+            by_tier[tier] = {
+                "summary": summarize(t_rows),
+                "by_stance": _group(t_rows, "stance"),
+                "by_role": _group(t_rows, "role"),
+                "by_pressure": _group(t_rows, "pressure"),
+                "control": control_summary(t_controls) if t_controls else None,
+            }
         models.append(
             {
                 "alias": alias,
                 "name": m.name,
                 "family": m.family,
                 "backend": m.backend,
-                "summary": summarize(mine),
-                "by_stance": _group(mine, "stance"),
-                "by_role": _group(mine, "role"),
-                "by_pressure": _group(mine, "pressure"),
+                "tiers": by_tier,
                 "private_summary": summarize(mine_private),
             }
         )
@@ -163,6 +210,7 @@ def build_export(
         if manifest_row
         else None,
         "judges": [j.alias for j in cfg.judges],
+        "tiers": tiers,
         "scenarios": [
             {
                 "id": sid,
@@ -170,12 +218,16 @@ def build_export(
                 "pressure": scenarios[sid].pressure,
                 "decision_type": scenarios[sid].decision_type,
                 "review_status": scenarios[sid].review_status,
+                "tier": scenarios[sid].tier,
                 "answer": scenarios[sid].answer_key.decision,
+                "acceptable": list(scenarios[sid].answer_key.acceptable),
                 "pressure_direction": scenarios[sid].pressure_direction,
             }
             for sid in shown_ids
         ],
         "flagged_scenarios": sorted(flagged),
         "models": models,
-        "cells": _group(rows, "model_alias", "role", "pressure", "stance"),
+        "cells": _group(
+            rows, "tier", "model_alias", "role", "pressure", "stance"
+        ),
     }

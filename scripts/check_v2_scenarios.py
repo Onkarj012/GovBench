@@ -20,6 +20,8 @@ def _render_all(s: ScenarioV2, draws: int = 5) -> list[str]:
             sample_instance(space, rng=random.Random(seed)) if space else {}
         )
         texts = [s.case_template] + [t.text for t in s.pressure_turns]
+        if s.control is not None:
+            texts.append(s.control.text)
         for text in texts:
             try:
                 out = text.format(**values)
