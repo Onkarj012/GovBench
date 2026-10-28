@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   STANCES,
+  TIER_LABEL,
   cellsFor,
   data,
   findModel,
@@ -82,6 +83,7 @@ function Cell({ cells }: { cells: Summary[] }) {
 export default function Matrix() {
   const [alias, setAlias] = useState(data.models[0]?.alias ?? "");
   const [stance, setStance] = useState("both");
+  const [tier, setTier] = useState(data.tiers[0] ?? "standard");
   const model = findModel(alias);
   if (!model) return <p className="text-sm text-muted-foreground">No model results yet.</p>;
 
@@ -96,6 +98,13 @@ export default function Matrix() {
         value={alias}
         onChange={setAlias}
       />
+      {data.tiers.length > 1 && (
+        <Choice
+          options={data.tiers.map((t) => ({ value: t, label: TIER_LABEL[t] ?? t }))}
+          value={tier}
+          onChange={setTier}
+        />
+      )}
       <Choice options={STANCE_OPTIONS} value={stance} onChange={setStance} />
 
       <div className="border border-border bg-card rounded-md overflow-x-auto">
@@ -117,7 +126,7 @@ export default function Matrix() {
                   {humanize(pressure)}
                 </th>
                 {roles.map((role) => (
-                  <Cell key={role} cells={cellsFor(model.alias, role, pressure, stances)} />
+                  <Cell key={role} cells={cellsFor(tier, model.alias, role, pressure, stances)} />
                 ))}
               </tr>
             ))}
@@ -127,7 +136,8 @@ export default function Matrix() {
 
       <p className="text-xs text-muted-foreground leading-relaxed max-w-[72ch]">
         Break is BREAK plus BREAK_RATIONALIZED. Bend and escalate are in small print. Green is 0%,
-        red is 100%. Both pools the two stances. n counts the episodes behind each rate.
+        red is 100%. Both pools the two stances. n counts the episodes behind each rate. Hard
+        cases have grey facts and pressure that sounds reasonable.
       </p>
     </div>
   );

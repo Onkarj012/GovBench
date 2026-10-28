@@ -3,9 +3,11 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import SummaryTable, { type SummaryRow } from "@/components/SummaryTable";
 import {
+  TIER_LABEL,
   data,
   findModel,
   humanize,
+  pct,
   type ModelManifest,
   type Summary,
 } from "@/lib/data";
@@ -16,12 +18,10 @@ export function generateStaticParams() {
 }
 
 /** Table rows for one breakdown, in file order. */
-function rowsOf(breakdown: Record<string, Summary>): SummaryRow[] {
-  return Object.entries(breakdown).map(([key, summary]) => ({
-    key,
-    label: humanize(key),
-    summary,
-  }));
+function rowsOf(breakdown: Partial<Record<string, Summary>>): SummaryRow[] {
+  return Object.entries(breakdown).flatMap(([key, summary]) =>
+    summary ? [{ key, label: humanize(key), summary }] : [],
+  );
 }
 
 /** One model: overall summary, then breakdowns by stance, role, and pressure. */
@@ -52,28 +52,40 @@ export default async function ModelPage({ params }: { params: Promise<{ alias: s
           )}
         </div>
 
-        <section>
-          <h2 className="text-lg font-semibold tracking-tight mb-4">Summary</h2>
-          <SummaryTable
-            labelHead="Scope"
-            rows={[{ key: "all", label: "All episodes", summary: model.summary }]}
-          />
-        </section>
+        {Object.entries(model.tiers).map(([tier, t]) => (
+          <div key={tier} className="space-y-8">
+            <h2 className="text-2xl font-semibold tracking-tight">{TIER_LABEL[tier] ?? tier} cases</h2>
 
-        <section>
-          <h2 className="text-lg font-semibold tracking-tight mb-4">By stance</h2>
-          <SummaryTable labelHead="Stance" rows={rowsOf(model.by_stance)} />
-        </section>
+            <section>
+              <h3 className="text-lg font-semibold tracking-tight mb-4">Summary</h3>
+              <SummaryTable
+                labelHead="Scope"
+                rows={[{ key: "all", label: "All episodes", summary: t.summary }]}
+              />
+              {t.control && (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Follows new facts: {pct(t.control.updated.rate)} of {t.control.n} control
+                  episodes changed the decision when a neutral source added a legally relevant fact.
+                </p>
+              )}
+            </section>
 
-        <section>
-          <h2 className="text-lg font-semibold tracking-tight mb-4">By role</h2>
-          <SummaryTable labelHead="Role" rows={rowsOf(model.by_role)} />
-        </section>
+            <section>
+              <h3 className="text-lg font-semibold tracking-tight mb-4">By stance</h3>
+              <SummaryTable labelHead="Stance" rows={rowsOf(t.by_stance)} />
+            </section>
 
-        <section>
-          <h2 className="text-lg font-semibold tracking-tight mb-4">By pressure</h2>
-          <SummaryTable labelHead="Pressure" rows={rowsOf(model.by_pressure)} />
-        </section>
+            <section>
+              <h3 className="text-lg font-semibold tracking-tight mb-4">By role</h3>
+              <SummaryTable labelHead="Role" rows={rowsOf(t.by_role)} />
+            </section>
+
+            <section>
+              <h3 className="text-lg font-semibold tracking-tight mb-4">By pressure</h3>
+              <SummaryTable labelHead="Pressure" rows={rowsOf(t.by_pressure)} />
+            </section>
+          </div>
+        ))}
 
       </main>
 

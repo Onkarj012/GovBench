@@ -2,7 +2,7 @@ import Link from "next/link";
 import Nav from "@/components/Nav";
 import Matrix from "@/components/Matrix";
 import SummaryTable from "@/components/SummaryTable";
-import { data, formatIST } from "@/lib/data";
+import { TIER_LABEL, data, formatIST, pct } from "@/lib/data";
 
 /** Home: headline, explainer, draft banner, role x pressure matrix, and model summary. */
 export default function Home() {
@@ -36,6 +36,11 @@ export default function Home() {
             v2 preview: scenarios are drafts cited to primary sources and not yet reviewed by a lawyer.
           </p>
         )}
+        <p className="mb-8 text-sm text-muted-foreground max-w-[72ch]">
+          Models on the <code className="font-mono text-xs">codex</code> and{" "}
+          <code className="font-mono text-xs">claude_code</code> backends run as served through those
+          CLIs, which add their own system prompt on top of the role prompt.
+        </p>
 
         {/* ── Matrix ── */}
         <section id="matrix" className="py-8">
@@ -43,27 +48,49 @@ export default function Home() {
           <Matrix />
         </section>
 
-        {/* ── Models ── */}
-        <section id="models" className="py-8">
-          <div className="flex items-baseline gap-3 mb-4">
-            <h2 className="text-xl font-semibold tracking-tight">Models</h2>
-            <span className="text-sm text-muted-foreground">{data.models.length}</span>
-          </div>
-          <SummaryTable
-            labelHead="Model"
-            extraHead="Backend"
-            rows={data.models.map((m) => ({
-              key: m.alias,
-              label: (
-                <Link href={`/model/${m.alias}`} className="hover:underline underline-offset-4">
-                  {m.name}
-                </Link>
-              ),
-              extra: m.backend,
-              summary: m.summary,
-            }))}
-          />
-        </section>
+        {/* ── Models, one table per tier ── */}
+        {data.tiers.map((tier) => {
+          const models = data.models.filter((m) => m.tiers[tier]);
+          const hasControl = models.some((m) => m.tiers[tier].control);
+          return (
+            <section key={tier} id={`models-${tier}`} className="py-8">
+              <div className="flex items-baseline gap-3 mb-4">
+                <h2 className="text-xl font-semibold tracking-tight">
+                  Models · {TIER_LABEL[tier] ?? tier} cases
+                </h2>
+                <span className="text-sm text-muted-foreground">{models.length}</span>
+              </div>
+              <SummaryTable
+                labelHead="Model"
+                extraHead={hasControl ? "Follows new facts" : "Backend"}
+                rows={models.map((m) => {
+                  const control = m.tiers[tier].control;
+                  return {
+                    key: m.alias,
+                    label: (
+                      <Link href={`/model/${m.alias}`} className="hover:underline underline-offset-4">
+                        {m.name}
+                      </Link>
+                    ),
+                    extra: hasControl
+                      ? control
+                        ? `${pct(control.updated.rate)} of ${control.n}`
+                        : "—"
+                      : m.backend,
+                    summary: m.tiers[tier].summary,
+                  };
+                })}
+              />
+              {hasControl && (
+                <p className="mt-3 text-xs text-muted-foreground max-w-[72ch] leading-relaxed">
+                  Follows new facts: in separate control episodes, a neutral source adds one new,
+                  legally relevant fact that should change the decision. A model that resists
+                  pressure but also ignores real facts is stubborn, not principled.
+                </p>
+              )}
+            </section>
+          );
+        })}
 
       </main>
 

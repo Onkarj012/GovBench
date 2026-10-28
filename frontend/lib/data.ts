@@ -24,7 +24,7 @@ export interface Summary {
   unresolved: number;
   median_turns_to_break: number | null;
   rationalized_share: number | null;
-  classes: Record<string, number>;
+  classes: Partial<Record<string, number>>;
 }
 
 /** Run settings for one model, from the manifest. */
@@ -35,27 +35,43 @@ export interface ModelManifest {
   temperature: number | null;
 }
 
+/** Control episodes: how often the model followed a new, legally relevant fact. */
+export interface ControlSummary {
+  episodes: number;
+  n: number;
+  updated: Rate;
+  classes: Partial<Record<string, number>>;
+}
+
 /** One scenario in the run. */
 export interface Scenario {
   id: string;
+  tier: string;
   role: string;
   pressure: string;
   decision_type: string;
   review_status: string;
   answer: string;
+  acceptable: string[];
   pressure_direction: string;
 }
 
-/** One model with its overall summary and breakdowns. */
+/** A model's results on one tier. */
+export interface TierResult {
+  summary: Summary;
+  by_stance: Partial<Record<string, Summary>>;
+  by_role: Partial<Record<string, Summary>>;
+  by_pressure: Partial<Record<string, Summary>>;
+  control: ControlSummary | null;
+}
+
+/** One model with its results per tier. */
 export interface ModelEntry {
   alias: string;
   name: string;
   family: string;
   backend: string;
-  summary: Summary;
-  by_stance: Record<string, Summary>;
-  by_role: Record<string, Summary>;
-  by_pressure: Record<string, Summary>;
+  tiers: Record<string, TierResult>;
   private_summary: Summary;
 }
 
@@ -73,6 +89,7 @@ export interface V2Data {
     cli_versions: Record<string, string>;
   };
   judges: string[];
+  tiers: string[];
   scenarios: Scenario[];
   flagged_scenarios: string[];
   models: ModelEntry[];
@@ -81,6 +98,12 @@ export interface V2Data {
 
 export const data: V2Data = raw;
 
+/** Display names for scenario tiers. */
+export const TIER_LABEL: Record<string, string> = {
+  standard: "Standard",
+  hard: "Hard",
+};
+
 /** Finds a model by alias. */
 export function findModel(alias: string): ModelEntry | undefined {
   return data.models.find((m) => m.alias === alias);
@@ -88,6 +111,7 @@ export function findModel(alias: string): ModelEntry | undefined {
 
 /** Summaries for one matrix position, one per stance that has a cell. */
 export function cellsFor(
+  tier: string,
   alias: string,
   role: string,
   pressure: string,
@@ -95,7 +119,7 @@ export function cellsFor(
 ): Summary[] {
   return stances.flatMap((stance) => {
     const cell: Summary | undefined =
-      data.cells[`${alias}|${role}|${pressure}|${stance}`];
+      data.cells[`${tier}|${alias}|${role}|${pressure}|${stance}`];
     return cell ? [cell] : [];
   });
 }
@@ -112,18 +136,12 @@ export function pooledRate(
 
 /** Roles that appear in scenarios or results, sorted. */
 export function roleAxis(): string[] {
-  return sortedUnique([
-    ...data.scenarios.map((s) => s.role),
-    ...data.models.flatMap((m) => Object.keys(m.by_role)),
-  ]);
+  return sortedUnique(data.scenarios.map((s) => s.role));
 }
 
 /** Pressures that appear in scenarios or results, sorted. */
 export function pressureAxis(): string[] {
-  return sortedUnique([
-    ...data.scenarios.map((s) => s.pressure),
-    ...data.models.flatMap((m) => Object.keys(m.by_pressure)),
-  ]);
+  return sortedUnique(data.scenarios.map((s) => s.pressure));
 }
 
 /** Turns a snake_case key into plain words. */
