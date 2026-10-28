@@ -52,6 +52,9 @@ def _with_retries(fn, what: str):
             return fn()
         except (BackendError, subprocess.TimeoutExpired, OSError) as exc:
             last = exc
+            # Subscription caps reset after hours, so backoff only wastes time.
+            if "usage limit" in str(exc).lower():
+                break
     raise BackendError(f"{what} failed after retries: {last}")
 
 

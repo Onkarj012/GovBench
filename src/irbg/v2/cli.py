@@ -97,10 +97,21 @@ def run_cmd(
 @v2.command("classify")
 @click.option("--run-name", required=True)
 @click.option("--workers", type=int, default=4)
+@click.option(
+    "--judges",
+    "ask",
+    help="Comma-separated judge aliases to ask now (default: all).",
+)
 @click.option("--db", "db_path", type=click.Path(path_type=Path))
-def classify_cmd(run_name: str, workers: int, db_path: Path | None) -> None:
+def classify_cmd(
+    run_name: str, workers: int, ask: str | None, db_path: Path | None
+) -> None:
     """Collect blind panel verdicts and classify every episode."""
     cfg = load_v2_config()
+    known = {j.alias for j in cfg.judges}
+    ask_set = set(ask.split(",")) if ask else known
+    if not ask_set <= known:
+        raise click.ClickException(f"unknown judge: {ask_set - known}")
     scenarios = {s.id: s for s in _scenarios(("public", "private"))}
     conn = connect_v2(db_path)
     try:
@@ -109,6 +120,7 @@ def classify_cmd(run_name: str, workers: int, db_path: Path | None) -> None:
             run_name=run_name,
             scenarios=scenarios,
             judges=cfg.judges,
+            ask=ask_set,
             workers=workers,
             log=_log,
         )

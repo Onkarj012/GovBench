@@ -195,11 +195,15 @@ def classify_run(
     run_name: str,
     scenarios: dict[str, ScenarioV2],
     judges: tuple[V2Judge, ...],
+    ask: set[str] | None = None,
     workers: int = 4,
     make_session: Callable[[V2Judge], Session] = judge_session,
     log: Callable[[str], None] = print,
 ) -> dict[str, int]:
-    """Collect missing panel verdicts, then classify every episode."""
+    """Collect missing verdicts from judges in ask, then classify.
+
+    Episodes still missing any panel verdict stay unclassified.
+    """
     rows = conn.execute(
         "SELECT id, scenario_id, stance, turns_json FROM episodes "
         "WHERE run_name = ? AND status = 'complete'",
@@ -221,6 +225,8 @@ def classify_run(
         if not needs_judges(s, turns):
             continue
         for j in judges:
+            if ask is not None and j.alias not in ask:
+                continue
             if (r["id"], j.alias) not in have:
                 pending.append((r["id"], s, r["stance"], turns, j))
 
