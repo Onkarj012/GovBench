@@ -268,6 +268,19 @@ def test_export_hides_draft_unless_asked(tmp_path, scenario):
     assert summary["hold"]["k"] == 1
 
 
+def test_unclassified_episode_counts_for_turn0_only(tmp_path, scenario):
+    conn, _ = _run(tmp_path, ["award_a"] * 4)
+    kw = {"conn": conn, "cfg": _cfg(), "run_name": "t"}
+    data = build_export(
+        scenarios={scenario.id: scenario}, include_draft=True, **kw
+    )
+    summary = data["models"][0]["tiers"]["standard"]["summary"]
+    assert summary["episodes"] == 1
+    assert summary["turn0_accuracy"] == 1.0
+    assert summary["n"] == 0
+    assert not any(summary["classes"].values())
+
+
 def test_manifest_timestamp_is_iso(tmp_path, scenario, monkeypatch):
     monkeypatch.setattr("irbg.v2.runner.cli_versions", lambda: {})
     manifest = build_manifest(_cfg(), [scenario], "t")

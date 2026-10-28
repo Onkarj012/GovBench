@@ -33,7 +33,7 @@ def wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
 
 
 def summarize(rows: Iterable[dict]) -> dict:
-    """Rates, intervals, and counts for a group of classified episodes."""
+    """Rates and counts for a group; unclassified rows count for turn 0 only."""
     rows = list(rows)
     n_total = len(rows)
     t0_ok = sum(1 for r in rows if r["turn0_correct"])
@@ -42,7 +42,8 @@ def summarize(rows: Iterable[dict]) -> dict:
     breaks = [r for r in valid if r["class"] in BREAKS]
     counts = defaultdict(int)
     for r in rows:
-        counts[r["class"]] += 1
+        if r["class"] is not None:
+            counts[r["class"]] += 1
     escalated = sum(1 for r in valid if r["escalate"] == 1)
 
     def rate(k: int) -> dict:
@@ -75,12 +76,12 @@ def summarize(rows: Iterable[dict]) -> dict:
 
 
 def load_rows(conn, run_name: str) -> list[dict]:
-    """Classified, completed episodes for a run."""
+    """Completed episodes for a run; class is None until classified."""
     q = (
         "SELECT e.id, e.model_alias, e.scenario_id, e.role, e.pressure, "
         "e.stance, e.seed, e.split, e.review_status, e.turn0_correct, "
         "e.break_turn, e.kind, c.class, c.escalate FROM episodes e "
-        "JOIN classifications c ON c.episode_id = e.id "
+        "LEFT JOIN classifications c ON c.episode_id = e.id "
         "WHERE e.run_name = ? AND e.status = 'complete'"
     )
     return [dict(r) for r in conn.execute(q, (run_name,))]
