@@ -147,7 +147,7 @@ def score_against_rubric(
 
     for element in rubric.elements:
         fast_hit = _lexical_match(response_text, element.detect)
-        if fast_hit is not None:
+        if fast_hit is not None and element.polarity == "required":
             verdicts.append(
                 ElementVerdict(
                     element_id=element.id,

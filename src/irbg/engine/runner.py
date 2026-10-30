@@ -38,7 +38,10 @@ from irbg.engine.variant_generator import (
 )
 from irbg.scenarios.discovery import load_template_files
 from irbg.scenarios.loader import load_scenario
-from irbg.scenarios.template_loader import load_scenario_template
+from irbg.scenarios.template_loader import (
+    ScenarioTemplateLoadError,
+    load_scenario_template,
+)
 from irbg.scenarios.template_models import RenderedPrompt, ScenarioTemplate
 
 # Token budgets are opt-in per pillar (Phase 1.4). P5 (transparency) and
@@ -558,6 +561,19 @@ def run_template_folder(
             else "v1"
         )
 
+        # Record the default seed when this run contains generated facts.
+        if seed is None:
+            for sf in scenario_files:
+                try:
+                    has_fact_space = (
+                        load_scenario_template(sf).fact_space is not None
+                    )
+                except ScenarioTemplateLoadError:
+                    continue
+                if has_fact_space:
+                    seed = 42
+                    break
+
         # Compute generator_hash from all fact_space blocks when seeded.
         # Sorting makes this independent of filesystem/execution order.
         generator_hash: str | None = None
@@ -754,12 +770,12 @@ def _process_scenario(
     """
     template = load_scenario_template(scenario_file)
 
-    if template.fact_space is not None and seed is not None:
+    if template.fact_space is not None:
         render_mode = mode if mode != "adversarial" else "baseline"
         rendered_prompts = _render_procedural(
             template,
             mode=render_mode,
-            seed=seed,
+            seed=42 if seed is None else seed,
             n_instances=n_instances,
         )
     else:
@@ -962,7 +978,9 @@ def _run_adversarial(
             turn_number=1,
             system_prompt_sent=rendered.system_prompt,
             user_prompt_sent=rendered.user_prompt,
-            instance_json=None,
+            instance_json=json.dumps(rendered.instance_vars)
+            if rendered.instance_vars is not None
+            else None,
             response=first_response,
         )
     )
@@ -993,7 +1011,9 @@ def _run_adversarial(
                 turn_number=turn_number,
                 system_prompt_sent=rendered.system_prompt,
                 user_prompt_sent=turn.user_prompt,
-                instance_json=None,
+                instance_json=json.dumps(rendered.instance_vars)
+                if rendered.instance_vars is not None
+                else None,
                 response=response,
             )
         )

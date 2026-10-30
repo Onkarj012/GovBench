@@ -115,3 +115,36 @@ def test_pass_matrix_aggregates_correctly(tmp_path: Path) -> None:
     assert row["total_count"] == 2
 
     conn.close()
+
+
+def test_repeated_verdict_replaces_prior_result(tmp_path: Path) -> None:
+    """A re-score updates one response and element row."""
+    conn = connect(DbConfig(path=tmp_path / "test.sqlite"))
+    create_tables(conn)
+    first = insert_element_verdict(
+        conn,
+        run_id="run-a",
+        scenario_id="s1",
+        response_id="response-a",
+        element_id="elem1",
+        present=False,
+        evidence="first",
+        created_at="2026-01-01T00:00:00+00:00",
+    )
+    second = insert_element_verdict(
+        conn,
+        run_id="run-a",
+        scenario_id="s1",
+        response_id="response-a",
+        element_id="elem1",
+        present=True,
+        evidence="second",
+        created_at="2026-01-02T00:00:00+00:00",
+    )
+
+    rows = conn.execute("SELECT * FROM element_verdicts").fetchall()
+    assert len(rows) == 1
+    assert first != second
+    assert rows[0]["present"] == 1
+    assert rows[0]["evidence"] == "second"
+    conn.close()

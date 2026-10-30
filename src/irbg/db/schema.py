@@ -144,6 +144,7 @@ def create_tables(conn: sqlite3.Connection) -> None:
             id TEXT PRIMARY KEY,
             run_id TEXT NOT NULL,
             scenario_id TEXT NOT NULL,
+            response_id TEXT,
             element_id TEXT NOT NULL,
             present INTEGER NOT NULL,
             evidence TEXT,
@@ -151,6 +152,8 @@ def create_tables(conn: sqlite3.Connection) -> None:
         );
         """
     )
+
+    _migrate_element_verdicts(conn)
 
     conn.execute(
         """
@@ -191,3 +194,19 @@ def _migrate_responses(conn: sqlite3.Connection) -> None:
         conn.commit()
     except Exception:
         pass
+
+
+def _migrate_element_verdicts(conn: sqlite3.Connection) -> None:
+    """Add response identity for repeatable per-response verdict writes."""
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(element_verdicts)")
+    }
+    if "response_id" not in columns:
+        conn.execute("ALTER TABLE element_verdicts ADD COLUMN response_id TEXT")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_element_verdict_response "
+        "ON element_verdicts(response_id, element_id) "
+        "WHERE response_id IS NOT NULL"
+    )
+    conn.commit()

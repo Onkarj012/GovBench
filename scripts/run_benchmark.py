@@ -4,10 +4,13 @@ Skips any (model, mode, pillar) that already has a completed run with score > 0
 in the DB. Safe to re-run after interruptions.
 """
 
-import sqlite3
 import subprocess
 import sys
 import time
+from pathlib import Path
+
+from irbg.db.operations import DbConfig, connect
+from irbg.db.schema import create_tables
 
 MODELS = [
     "glm-4.7-flash",
@@ -43,19 +46,42 @@ DB_PATH = "irbg.sqlite"
 
 def already_done(db: str, model: str, mode: str, pillar: str) -> bool:
     """Return True if a completed run with score > 0 exists for this combo."""
-    con = sqlite3.connect(db)
-    row = con.execute(
-        """
-        SELECT ps.score FROM benchmark_runs br
-        JOIN pillar_scores ps ON ps.run_id = br.id
-        WHERE br.model_id = ? AND br.mode = ? AND ps.pillar = ?
-          AND br.status = 'completed' AND ps.score > 0
-        LIMIT 1
-        """,
-        (model, mode, pillar),
-    ).fetchone()
-    con.close()
-    return row is not None
+    con = connect(DbConfig(path=Path(db)))
+    try:
+        row = con.execute(
+            """
+            SELECT ps.score FROM benchmark_runs br
+            JOIN pillar_scores ps ON ps.run_id = br.id
+            WHERE br.model_id = ? AND br.mode = ? AND ps.pillar = ?
+              AND br.status = 'completed' AND ps.score > 0
+            LIMIT 1
+            """,
+            (model, mode, pillar),
+        ).fetchone()
+        return row is not None
+    finally:
+        con.close()
+
+
+def _existing_score(
+    db: str, model: str, mode: str, pillar: str
+) -> float | None:
+    """Return the saved score for a completed run, if one exists."""
+    con = connect(DbConfig(path=Path(db)))
+    try:
+        row = con.execute(
+            """
+            SELECT ps.score FROM benchmark_runs br
+            JOIN pillar_scores ps ON ps.run_id = br.id
+            WHERE br.model_id = ? AND br.mode = ? AND ps.pillar = ?
+              AND br.status = 'completed' AND ps.score > 0
+            LIMIT 1
+            """,
+            (model, mode, pillar),
+        ).fetchone()
+        return float(row[0]) if row else None
+    finally:
+        con.close()
 
 
 def run(cmd: list[str]) -> tuple[int, str, str]:
@@ -64,6 +90,12 @@ def run(cmd: list[str]) -> tuple[int, str, str]:
 
 
 def main() -> None:
+    conn = connect(DbConfig(path=Path(DB_PATH)))
+    try:
+        create_tables(conn)
+    finally:
+        conn.close()
+
     start = time.time()
     results: dict[str, dict[str, dict[str, str]]] = {}
 
@@ -78,16 +110,8 @@ def main() -> None:
             for pillar, folder in PILLAR_FOLDERS.items():
                 if already_done(DB_PATH, model, mode, pillar):
                     # Fetch existing score for display
-                    con = sqlite3.connect(DB_PATH)
-                    row = con.execute(
-                        "SELECT ps.score FROM benchmark_runs br "
-                        "JOIN pillar_scores ps ON ps.run_id = br.id "
-                        "WHERE br.model_id=? AND br.mode=? AND ps.pillar=? "
-                        "AND br.status='completed' AND ps.score > 0 LIMIT 1",
-                        (model, mode, pillar),
-                    ).fetchone()
-                    con.close()
-                    score = f"{row[0]:.2f}" if row else "?"
+                    row_score = _existing_score(DB_PATH, model, mode, pillar)
+                    score = f"{row_score:.2f}" if row_score is not None else "?"
                     print(f"  {pillar}: SKIP (existing score={score})")
                     results[model][mode][pillar] = f"skip:{score}"
                     continue

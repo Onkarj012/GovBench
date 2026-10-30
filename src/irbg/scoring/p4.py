@@ -85,6 +85,7 @@ def score_p4_run(
                 model_alias=str(run_row["model_id"]),
                 db_path=db_path,
                 run_id=run_id,
+                response_id=str(row["id"]),
                 client=client,
             )
 

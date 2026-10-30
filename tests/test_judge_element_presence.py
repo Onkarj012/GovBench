@@ -153,11 +153,11 @@ def test_forbidden_element_penalizes() -> None:
         expects_insufficient_info=False,
     )
 
-    # Both detect hints match - verify_fn never called
+    # Required hints can be fast-pathed; forbidden claims need semantic checks.
     result = score_against_rubric(
         rubric,
         "The answer is present and also forbidden_word here.",
-        verify_element=lambda el, txt: (False, "unused"),
+        verify_element=lambda el, txt: (el.polarity == "forbidden", "judge"),
     )
 
     assert result.earned == 2.0
