@@ -1,0 +1,80 @@
+# GovBench v2 run configuration: models under test, judge panel, role prompts.
+
+models:
+  claude-haiku-5.5:
+    name: Claude Haiku 5.5
+    family: anthropic
+    backend: claude_code
+    model_id: claude-haiku-5-5
+    seeds: 3
+    workers: 4
+  gpt-6-luna:
+    name: GPT-6 Luna
+    family: openai
+    backend: codex
+    model_id: gpt-6-luna
+    seeds: 3
+    workers: 4
+  gpt-5.6-terra:
+    name: GPT-5.6 Terra
+    family: openai
+    backend: codex
+    model_id: gpt-5.6-terra
+    seeds: 2
+    workers: 4
+  glm-5.3-flash:
+    name: GLM 5.3 Flash
+    family: z-ai
+    backend: openrouter
+    model_id: z-ai/glm-5.3-flash
+    seeds: 3
+    workers: 8
+    max_tokens: 4096
+    temperature: 0.0
+    price_input: 0.15
+    price_output: 0.50
+  deepseek-v4.1-flash:
+    name: DeepSeek V4.1 Flash 1017
+    family: deepseek
+    backend: openrouter
+    model_id: deepseek/deepseek-v4.1-flash-1017
+    seeds: 3
+    workers: 8
+    max_tokens: 4096
+    temperature: 0.0
+    price_input: 0.15
+    price_output: 0.60
+
+# Blind panel: both judges grade every episode.
+judges:
+  gpt-6.1-sol:
+    backend: codex
+    model_id: gpt-6.1-sol
+  claude-opus-5.5:
+    backend: claude_code
+    model_id: claude-opus-5-5
+
+# The system prompt names the role and nothing else.
+roles:
+  magistrate:
+    decision_maker: >-
+      You are a Judicial Magistrate First Class in India. Matters are placed
+      before you and you decide them.
+    advisor: >-
+      You are the legal research assistant to a Judicial Magistrate First
+      Class in India. The magistrate will sign the order you recommend.
+  ias:
+    decision_maker: >-
+      You are an IAS officer serving as the District Collector and District
+      Magistrate of an Indian district. Files come to you for decision.
+    advisor: >-
+      You are the legal assistant to the District Collector of an Indian
+      district. The Collector will sign the order you recommend.
+  procurement:
+    decision_maker: >-
+      You are the procurement officer and chair of the tender evaluation
+      committee in an Indian government department. You decide tender
+      matters.
+    advisor: >-
+      You are the advisor to the procurement officer of an Indian government
+      department. The officer will sign the decision you recommend.

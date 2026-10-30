@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "GovBench",
-  description: "Institutional Readiness & Bias Benchmark for Governance — evaluating AI models across 6 governance pillars",
+  description: "What does an AI do when the minister calls? Measuring how AI models hold, bend, or break under pressure in Indian public offices.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

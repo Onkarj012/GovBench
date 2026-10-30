@@ -74,6 +74,7 @@ from irbg.scoring.p3 import P3ScoringError, score_p3_run
 from irbg.scoring.p4 import P4ScoringError, score_p4_run
 from irbg.scoring.p5 import P5ScoringError, score_p5_run
 from irbg.scoring.p6 import P6ScoringError, score_p6_run
+from irbg.v2.cli import v2 as v2_group
 
 console = Console()
 
@@ -1846,3 +1847,6 @@ def run_full_suite_cmd(
         "Run [bold]irbg verify-coverage --model "
         f"{model_alias}[/bold] to check matrix completeness."
     )
+
+
+main.add_command(v2_group)

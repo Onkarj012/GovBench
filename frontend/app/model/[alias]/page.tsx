@@ -1,145 +1,91 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Nav from "@/components/Nav";
+import SummaryTable, { type SummaryRow } from "@/components/SummaryTable";
 import {
-  MODELS, PILLARS, PillarKey, getPillarScores, getCompositeScore,
-  gradeFromScore, GRADE_COLOR, FAMILY_COLOR,
+  TIER_LABEL,
+  data,
+  findModel,
+  humanize,
+  pct,
+  type ModelManifest,
+  type Summary,
 } from "@/lib/data";
 
+/** Builds one static page per model in the data file. */
 export function generateStaticParams() {
-  return MODELS.map((m) => ({ alias: m.alias }));
+  return data.models.map((m) => ({ alias: m.alias }));
 }
 
+/** Table rows for one breakdown, in file order. */
+function rowsOf(breakdown: Partial<Record<string, Summary>>): SummaryRow[] {
+  return Object.entries(breakdown).flatMap(([key, summary]) =>
+    summary ? [{ key, label: humanize(key), summary }] : [],
+  );
+}
+
+/** One model: overall summary, then breakdowns by stance, role, and pressure. */
 export default async function ModelPage({ params }: { params: Promise<{ alias: string }> }) {
   const { alias } = await params;
-  const model = MODELS.find((m) => m.alias === alias);
+  const model = findModel(alias);
   if (!model) notFound();
 
-  const pillarScores = getPillarScores(model);
-  const composite = getCompositeScore(model);
-  const grade = gradeFromScore(composite);
-  const pillars = Object.keys(PILLARS) as PillarKey[];
-  const modes = ["baseline", "pressure", "adversarial"] as const;
-  const familyColor = FAMILY_COLOR[model.family];
+  const manifest: ModelManifest | undefined = data.manifest.models[alias];
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-
       <Nav />
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-8 space-y-10">
 
-        {/* ── Model header ── */}
-        <div className="flex items-start justify-between py-8 border-b border-border/40 mb-8">
-          <div>
-            <h1 className="text-4xl font-semibold tracking-tight mb-1" style={{ color: familyColor }}>
-              {model.displayName}
-            </h1>
-            <p className="text-sm font-mono text-muted-foreground">{model.alias}</p>
-          </div>
-          <div className="text-right">
-            <div className="text-4xl font-semibold font-mono text-foreground">{composite.toFixed(1)}</div>
-            <div className="text-sm font-mono font-semibold mt-1" style={{ color: GRADE_COLOR[grade] }}>
-              Grade {grade}
-            </div>
-          </div>
+        {/* ── Header ── */}
+        <div className="pt-6 pb-4 border-b border-border/40">
+          <Link href="/" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+            All models
+          </Link>
+          <h1 className="mt-4 text-4xl font-semibold tracking-tight">{model.name}</h1>
+          {manifest && (
+            <p className="mt-2 font-mono text-sm text-muted-foreground">
+              {model.alias} · {manifest.backend} · {manifest.model_id} · seeds {manifest.seeds} · temperature{" "}
+              {manifest.temperature ?? "default"}
+            </p>
+          )}
         </div>
 
-        {/* ── Pillar breakdown ── */}
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold tracking-tight mb-4">Pillar Scores</h2>
-          <div className="border border-border bg-card rounded-md p-6 space-y-4">
-            {pillars.map((p) => {
-              const score = pillarScores[p];
-              const pg = score !== undefined ? gradeFromScore(score) : "F";
-              const pgColor = GRADE_COLOR[pg];
-              return (
-                <div key={p}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm text-foreground">{PILLARS[p]}</span>
-                    <div className="flex items-center gap-3">
-                      {score !== undefined ? (
-                        <>
-                          <span className="text-sm font-mono font-semibold" style={{ color: pgColor }}>
-                            {score.toFixed(1)}
-                          </span>
-                          <span className="text-xs font-mono font-semibold w-4" style={{ color: pgColor }}>
-                            {pg}
-                          </span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">—</span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="h-1.5 rounded-sm overflow-hidden bg-muted">
-                    <div className="h-full transition-all duration-300"
-                      style={{ width: `${score ?? 0}%`, background: pgColor }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+        {Object.entries(model.tiers).map(([tier, t]) => t && (
+          <div key={tier} className="space-y-8">
+            <h2 className="text-2xl font-semibold tracking-tight">{TIER_LABEL[tier] ?? tier} cases</h2>
 
-        {/* ── Runs by mode ── */}
-        <section>
-          <h2 className="text-lg font-semibold tracking-tight mb-4">Runs by Mode</h2>
-          <div className="space-y-4">
-            {modes.map((mode) => {
-              const modeRuns = model.runs.filter((r) => r.mode === mode);
-              if (!modeRuns.length) return null;
-              return (
-                <div key={mode} className="border border-border bg-card rounded-md overflow-hidden">
-                  <div className="px-4 py-2.5 border-b border-border/40 flex items-center gap-2">
-                    <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
-                      {mode}
-                    </span>
-                    <span className="text-xs text-muted-foreground opacity-50">
-                      {modeRuns.length} run{modeRuns.length > 1 ? "s" : ""}
-                    </span>
-                  </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border/40">
-                        <th className="text-left px-4 py-2 text-muted-foreground font-medium text-xs">Pillar</th>
-                        <th className="text-right px-4 py-2 text-muted-foreground font-medium text-xs">Score</th>
-                        <th className="text-center px-4 py-2 text-muted-foreground font-medium text-xs">Grade</th>
-                        <th className="text-right px-4 py-2 text-muted-foreground font-medium text-xs">Latency</th>
-                        <th className="text-right px-4 py-2 text-muted-foreground font-medium text-xs">Tokens</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {modeRuns.map((run) => {
-                        const rg = gradeFromScore(run.score);
-                        const rgColor = GRADE_COLOR[rg];
-                        return (
-                          <tr key={run.run_id} className="border-b border-border/40 last:border-0 hover:bg-muted/30 transition-colors">
-                            <td className="px-4 py-2.5 text-foreground text-sm">{PILLARS[run.pillar]}</td>
-                            <td className="px-4 py-2.5 text-right font-mono font-semibold text-sm"
-                              style={{ color: rgColor }}>
-                              {run.score.toFixed(1)}
-                            </td>
-                            <td className="px-4 py-2.5 text-center font-mono text-xs font-semibold"
-                              style={{ color: rgColor }}>
-                              {rg}
-                            </td>
-                            <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">
-                              {(run.avg_latency_ms / 1000).toFixed(1)}s
-                            </td>
-                            <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">
-                              {run.avg_tokens.toFixed(0)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              );
-            })}
+            <section>
+              <h3 className="text-lg font-semibold tracking-tight mb-4">Summary</h3>
+              <SummaryTable
+                labelHead="Scope"
+                rows={[{ key: "all", label: "All episodes", summary: t.summary }]}
+              />
+              {t.control && (
+                <p className="mt-3 text-sm text-muted-foreground">
+                  Follows new facts: {pct(t.control.updated.rate)} of {t.control.n} control
+                  episodes changed the decision when a neutral source added a legally relevant fact.
+                </p>
+              )}
+            </section>
+
+            <section>
+              <h3 className="text-lg font-semibold tracking-tight mb-4">By stance</h3>
+              <SummaryTable labelHead="Stance" rows={rowsOf(t.by_stance)} />
+            </section>
+
+            <section>
+              <h3 className="text-lg font-semibold tracking-tight mb-4">By role</h3>
+              <SummaryTable labelHead="Role" rows={rowsOf(t.by_role)} />
+            </section>
+
+            <section>
+              <h3 className="text-lg font-semibold tracking-tight mb-4">By pressure</h3>
+              <SummaryTable labelHead="Pressure" rows={rowsOf(t.by_pressure)} />
+            </section>
           </div>
-        </section>
+        ))}
 
       </main>
 
