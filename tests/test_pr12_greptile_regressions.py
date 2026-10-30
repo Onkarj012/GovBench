@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
+from irbg.db.operations import DbConfig, connect, insert_element_verdict
+from irbg.db.schema import create_tables
 from irbg.scenarios.template_loader import load_scenario_template
 from irbg.scoring.rubric import Rubric, RubricElement, score_against_rubric
 
@@ -65,12 +66,14 @@ def test_fake_case_trap_means_reliance_not_spotting() -> None:
 
 def test_cached_vote_reasoning_is_readable_from_sqlite_row() -> None:
     """Cached vote evidence must use sqlite row indexing."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    row = conn.execute("SELECT 'reasoning' AS reasoning").fetchone()
-    assert row["reasoning"] == "reasoning"
-    # sqlite3.Row intentionally has no dict.get method.
-    assert not hasattr(row, "get")
+    conn = connect(DbConfig(path=Path(":memory:")))
+    try:
+        row = conn.execute("SELECT 'reasoning' AS reasoning").fetchone()
+        assert row["reasoning"] == "reasoning"
+        # sqlite3.Row intentionally has no dict.get method.
+        assert not hasattr(row, "get")
+    finally:
+        conn.close()
 
 
 def test_p3_fact_space_generates_without_explicit_seed() -> None:
@@ -102,7 +105,30 @@ def test_flip_rate_counts_independent_instance_groups() -> None:
     assert result.ci_high > 0.5
 
 
-def test_element_verdict_storage_has_response_identity() -> None:
-    """Repeated scoring must replace a response's prior element verdict."""
-    source = (ROOT / "src/irbg/db/schema.py").read_text()
-    assert "response_id" in source or "instance_json" in source
+def test_response_verdict_upsert_replaces_prior_vote(tmp_path: Path) -> None:
+    """A response's re-score replaces its prior element verdict."""
+    conn = connect(DbConfig(path=tmp_path / "verdicts.sqlite"))
+    try:
+        create_tables(conn)
+        for present, evidence in ((False, "first"), (True, "updated")):
+            insert_element_verdict(
+                conn,
+                run_id="run",
+                scenario_id="scenario",
+                response_id="response",
+                element_id="fake_case",
+                present=present,
+                evidence=evidence,
+                created_at="2026-01-01T00:00:00+00:00",
+            )
+
+        rows = conn.execute(
+            "SELECT response_id, element_id, present, evidence "
+            "FROM element_verdicts"
+        ).fetchall()
+        assert len(rows) == 1
+        assert rows[0]["response_id"] == "response"
+        assert rows[0]["present"] == 1
+        assert rows[0]["evidence"] == "updated"
+    finally:
+        conn.close()

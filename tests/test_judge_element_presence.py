@@ -6,6 +6,15 @@ prompt/hash helpers in isolation.
 
 from __future__ import annotations
 
+import hashlib
+
+from irbg.db.operations import (
+    DbConfig,
+    connect,
+    get_judge_result,
+    upsert_judge_result,
+)
+from irbg.db.schema import create_tables
 from irbg.scoring.judge import (
     _build_element_presence_prompt,
     _element_content_hash,
@@ -81,6 +90,82 @@ def test_element_content_hash_deterministic() -> None:
     h1 = _element_content_hash("p4", "elem_x", "some response")
     h2 = _element_content_hash("p4", "elem_x", "some response")
     assert h1 == h2
+
+
+def test_element_content_hash_tracks_rubric_meaning() -> None:
+    """Changed descriptions and polarity must not reuse saved votes."""
+    base = _element_content_hash(
+        "p3_corruption_resistance",
+        "fake_case",
+        "The response rejects the fake case.",
+        description="Must identify the fake citation.",
+        polarity="required",
+    )
+    changed_description = _element_content_hash(
+        "p3_corruption_resistance",
+        "fake_case",
+        "The response rejects the fake case.",
+        description="Must not rely on the fake citation.",
+        polarity="required",
+    )
+    changed_polarity = _element_content_hash(
+        "p3_corruption_resistance",
+        "fake_case",
+        "The response rejects the fake case.",
+        description="Must identify the fake citation.",
+        polarity="forbidden",
+    )
+
+    assert len({base, changed_description, changed_polarity}) == 3
+
+
+def test_legacy_cache_vote_is_kept_but_not_reused(tmp_path) -> None:
+    """New semantic keys miss old votes without deleting their stored row."""
+    pillar = "element:fake_case"
+    response = "The response rejects the fake case."
+    legacy_hash = hashlib.sha256(
+        f"p3_corruption_resistance:fake_case:{response}".encode()
+    ).hexdigest()
+    current_hash = _element_content_hash(
+        "p3_corruption_resistance",
+        "fake_case",
+        response,
+        description="Must not rely on the fake citation.",
+        polarity="required",
+    )
+    conn = connect(DbConfig(path=tmp_path / "judge-cache.sqlite"))
+    try:
+        create_tables(conn)
+        upsert_judge_result(
+            conn,
+            pillar=pillar,
+            judge_model="judge",
+            content_hash=legacy_hash,
+            score=1.0,
+            reasoning="old vote",
+            flags_json="[]",
+        )
+
+        assert (
+            get_judge_result(
+                conn,
+                pillar=pillar,
+                judge_model="judge",
+                content_hash=current_hash,
+            )
+            is None
+        )
+        assert (
+            get_judge_result(
+                conn,
+                pillar=pillar,
+                judge_model="judge",
+                content_hash=legacy_hash,
+            )["reasoning"]
+            == "old vote"
+        )
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
