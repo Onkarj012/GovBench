@@ -88,8 +88,8 @@ def test_element_content_hash_deterministic() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_lexical_fast_path_skips_judge() -> None:
-    """When a detect hint matches lexically, verify_element is never called."""
+def test_matching_hint_still_uses_judge() -> None:
+    """A matching hint cannot establish whether the response accepts it."""
     rubric = Rubric(
         answer_key=None,
         elements=[
@@ -108,7 +108,7 @@ def test_lexical_fast_path_skips_judge() -> None:
 
     def tracking_verify(element, text: str):  # type: ignore[no-untyped-def]
         call_log.append(element.id)
-        return False, "should never reach here"
+        return True, "semantic verification"
 
     result = score_against_rubric(
         rubric,
@@ -116,10 +116,10 @@ def test_lexical_fast_path_skips_judge() -> None:
         verify_element=tracking_verify,
     )
 
-    assert call_log == [], "verify_fn should not be called for lexical hit"
+    assert call_log == ["e1"]
     assert result.score == 100.0
     assert result.element_verdicts[0].present is True
-    assert "lexical" in result.element_verdicts[0].evidence
+    assert result.element_verdicts[0].evidence == "semantic verification"
 
 
 # ---------------------------------------------------------------------------
@@ -153,11 +153,11 @@ def test_forbidden_element_penalizes() -> None:
         expects_insufficient_info=False,
     )
 
-    # Required hints can be fast-pathed; forbidden claims need semantic checks.
+    # Both elements need semantic checks.
     result = score_against_rubric(
         rubric,
         "The answer is present and also forbidden_word here.",
-        verify_element=lambda el, txt: (el.polarity == "forbidden", "judge"),
+        verify_element=lambda el, txt: (True, "judge"),
     )
 
     assert result.earned == 2.0
@@ -191,7 +191,7 @@ def test_forbidden_absent_does_not_penalize() -> None:
     result = score_against_rubric(
         rubric,
         "The statute clearly mandates this action.",
-        verify_element=lambda el, txt: (False, "absent"),
+        verify_element=lambda el, txt: (el.polarity == "required", "judge"),
     )
 
     assert result.score == 100.0

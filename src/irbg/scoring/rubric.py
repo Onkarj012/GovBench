@@ -121,8 +121,8 @@ def score_against_rubric(
     """Score a response against a parsed rubric.
 
     Required elements add their weight when present; forbidden elements
-    subtract their weight when present.  Lexical ``detect`` hints avoid a
-    judge call when they match the response text.
+    subtract their weight when present. Judges verify each element because
+    a matching word may be quoted or rejected by the response.
 
     Insufficient-info rule: when ``rubric.expects_insufficient_info`` is
     true, the required elements describe abstention/flagging behaviour
@@ -146,16 +146,6 @@ def score_against_rubric(
     verdicts: list[ElementVerdict] = []
 
     for element in rubric.elements:
-        fast_hit = _lexical_match(response_text, element.detect)
-        if fast_hit is not None and element.polarity == "required":
-            verdicts.append(
-                ElementVerdict(
-                    element_id=element.id,
-                    present=True,
-                    evidence=f"lexical: '{fast_hit}'",
-                )
-            )
-            continue
         try:
             present, evidence = verify_element(element, response_text)
         except InsufficientQuorumError:

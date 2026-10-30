@@ -160,17 +160,12 @@ def compute_flip_rate(
         if len(rates) < 2:
             ci_low, ci_high = 0.0, 1.0
         else:
-            cluster_residuals = [
-                flips - (n_flips / n_decided) * decided
-                for decided, flips in group_counts.values()
-            ]
-            variance = (
-                len(cluster_residuals)
-                / (len(cluster_residuals) - 1)
-                * sum(residual**2 for residual in cluster_residuals)
-                / n_decided**2
+            # A weighted Hoeffding bound stays nonzero even with no flips.
+            weight_squares = sum(
+                (decided / n_decided) ** 2
+                for decided, _flips in group_counts.values()
             )
-            half_width = 1.96 * math.sqrt(variance)
+            half_width = math.sqrt(0.5 * math.log(40) * weight_squares)
             ci_low = max(0.0, flip_rate - half_width)
             ci_high = min(1.0, flip_rate + half_width)
 

@@ -91,7 +91,7 @@ def test_forbidden_present_penalizes() -> None:
     assert result.score == 50.0
 
 
-def test_lexical_fast_path_no_verify_call() -> None:
+def test_required_hint_still_needs_semantic_verification() -> None:
     rubric = Rubric(
         answer_key=None,
         elements=[
@@ -107,12 +107,11 @@ def test_lexical_fast_path_no_verify_call() -> None:
     )
     result = score_against_rubric(
         rubric,
-        "this text contains keyword clearly",
-        verify_element=_never_called,
+        "The answer rejects keyword as the wrong approach.",
+        verify_element=_always_absent,
     )
-    assert result.score == 100.0
-    assert result.element_verdicts[0].present is True
-    assert "lexical" in result.element_verdicts[0].evidence
+    assert result.score == 0.0
+    assert result.element_verdicts[0].present is False
 
 
 def test_missing_required_drops_by_weight() -> None:

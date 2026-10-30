@@ -92,8 +92,14 @@ def test_adversarial_turn_records_keep_instance_facts() -> None:
 
 def test_flip_rate_counts_independent_instance_groups() -> None:
     """Overlapping variant pairs must not inflate the CI sample size."""
-    source = (ROOT / "src/irbg/analysis/fliprate.py").read_text()
-    assert "cluster" in source.lower() or "instance_groups" in source
+    from irbg.analysis.fliprate import compute_flip_rate
+
+    result = compute_flip_rate(
+        [("grant", "grant")] * 56,
+        groups=["one"] * 28 + ["two"] * 28,
+    )
+    assert result.flip_rate == 0
+    assert result.ci_high > 0.5
 
 
 def test_element_verdict_storage_has_response_identity() -> None:
