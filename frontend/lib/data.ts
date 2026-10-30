@@ -101,6 +101,7 @@ export interface V2Data {
 // Keep the separately collected Sol cohort when the main run is exported.
 export const data: V2Data = {
   ...raw,
+  include_draft: raw.include_draft || sol.include_draft,
   manifest: {
     ...raw.manifest,
     models: { ...sol.manifest.models, ...raw.manifest.models },
@@ -110,6 +111,13 @@ export const data: V2Data = {
     ...sol.models.filter((model) => !raw.models.some((m) => m.alias === model.alias)),
   ],
   cells: { ...sol.cells, ...raw.cells },
+  tiers: [...new Set([...raw.tiers, ...sol.tiers])],
+  scenarios: [
+    ...raw.scenarios,
+    ...sol.scenarios.filter(
+      (scenario) => !raw.scenarios.some((s) => s.id === scenario.id),
+    ),
+  ],
   notices: [...(raw.notices ?? []), ...(sol.notices ?? [])],
 };
 

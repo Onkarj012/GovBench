@@ -47,7 +47,12 @@ def v2() -> None:
 @click.option("--stance", type=click.Choice(["both", *STANCES]), default="both")
 @click.option("--splits", default="public,private")
 @click.option("--only", default="", help="Comma list of scenario ids.")
-@click.option("--max-usd", type=float, default=10.0)
+@click.option(
+    "--max-usd",
+    type=click.FloatRange(min=0),
+    default=10.0,
+    help="OpenRouter threshold; a call may exceed it. CLI costs excluded.",
+)
 @click.option("--db", "db_path", type=click.Path(path_type=Path))
 def run_cmd(
     run_name: str,
@@ -73,6 +78,10 @@ def run_cmd(
     if unknown:
         raise click.ClickException(f"unknown models: {unknown}")
     stances = STANCES if stance == "both" else (stance,)
+    _log(
+        "Budget limit uses recorded or configured OpenRouter pricing; a call "
+        "may exceed the cap, and --max-usd cannot measure CLI backend costs."
+    )
     conn = connect_v2(db_path)
     try:
         existing = conn.execute(
@@ -86,12 +95,15 @@ def run_cmd(
                     cfg,
                     {s.id: s for s in scenarios},
                     exact_scenarios=True,
+                    seeds=seeds,
                 )
             except ValueError as exc:
                 raise click.ClickException(str(exc)) from exc
         else:
             save_manifest(
-                conn, run_name, build_manifest(cfg, scenarios, run_name)
+                conn,
+                run_name,
+                build_manifest(cfg, scenarios, run_name, seeds=seeds),
             )
         for alias in aliases:
             counts = run_model(
@@ -123,12 +135,15 @@ def classify_cmd(
     run_name: str, workers: int, ask: str | None, db_path: Path | None
 ) -> None:
     """Collect blind panel verdicts and classify every episode."""
-    cfg = load_v2_config()
+    try:
+        cfg = load_v2_config()
+        scenarios = {s.id: s for s in _scenarios(("public", "private"))}
+    except (V2ConfigError, ScenarioV2Error) as exc:
+        raise click.ClickException(str(exc)) from exc
     known = {j.alias for j in cfg.judges}
     ask_set = set(ask.split(",")) if ask else known
     if not ask_set <= known:
         raise click.ClickException(f"unknown judge: {ask_set - known}")
-    scenarios = {s.id: s for s in _scenarios(("public", "private"))}
     conn = connect_v2(db_path)
     try:
         try:
@@ -162,8 +177,11 @@ def export_cmd(
     run_name: str, out: Path, include_draft: bool, db_path: Path | None
 ) -> None:
     """Write the site JSON for a classified run."""
-    cfg = load_v2_config()
-    scenarios = {s.id: s for s in _scenarios(("public", "private"))}
+    try:
+        cfg = load_v2_config()
+        scenarios = {s.id: s for s in _scenarios(("public", "private"))}
+    except (V2ConfigError, ScenarioV2Error) as exc:
+        raise click.ClickException(str(exc)) from exc
     conn = connect_v2(db_path)
     try:
         try:

@@ -114,10 +114,14 @@ def flagged_scenarios(rows: list[dict], min_models: int = 3) -> list[str]:
     )
     for r in rows:
         if r["stance"] == "decision_maker" and r.get("kind") != "control":
-            per[r["scenario_id"]][r["model_alias"]].append(r["turn0_correct"])
+            value = r["turn0_correct"]
+            if value is not None:
+                per[r["scenario_id"]][r["model_alias"]].append(value)
     flagged = []
     for sid, models in per.items():
-        wrong = sum(1 for vals in models.values() if sum(vals) * 2 < len(vals))
+        wrong = sum(
+            1 for vals in models.values() if vals and sum(vals) * 2 < len(vals)
+        )
         if wrong >= min_models:
             flagged.append(sid)
     return sorted(flagged)

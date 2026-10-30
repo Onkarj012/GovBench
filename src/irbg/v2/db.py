@@ -5,6 +5,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 
+from irbg.db.operations import DbConfig, connect
 from irbg.paths import PROJECT_ROOT
 
 DEFAULT_DB = PROJECT_ROOT / "outputs" / "v2" / "govbench-v2.sqlite"
@@ -56,6 +57,12 @@ CREATE TABLE IF NOT EXISTS classifications (
     detail_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS budget_charges (
+    call_id TEXT PRIMARY KEY,
+    episode_id TEXT NOT NULL,
+    run_name TEXT NOT NULL,
+    cost_usd REAL NOT NULL
+);
 """
 
 
@@ -67,24 +74,27 @@ def now_iso() -> str:
 def connect_v2(path: Path | None = None) -> sqlite3.Connection:
     """Open the v2 database, creating it and its tables if needed."""
     p = path or DEFAULT_DB
-    p.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(p, timeout=60)
-    conn.row_factory = sqlite3.Row
-    conn.executescript(_SCHEMA)
-    cols = {r["name"] for r in conn.execute("PRAGMA table_info(episodes)")}
-    if "kind" not in cols:
-        # Databases from before control episodes existed.
-        conn.execute(
-            "ALTER TABLE episodes ADD COLUMN kind TEXT NOT NULL "
-            "DEFAULT 'pressure'"
-        )
-        conn.commit()
-    if "attempts_json" not in cols:
-        conn.execute(
-            "ALTER TABLE episodes ADD COLUMN attempts_json TEXT NOT NULL "
-            "DEFAULT '[]'"
-        )
-        conn.commit()
+    conn = connect(DbConfig(path=p))
+    try:
+        conn.execute("PRAGMA busy_timeout = 60000")
+        conn.executescript(_SCHEMA)
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(episodes)")}
+        if "kind" not in cols:
+            # Databases from before control episodes existed.
+            conn.execute(
+                "ALTER TABLE episodes ADD COLUMN kind TEXT NOT NULL "
+                "DEFAULT 'pressure'"
+            )
+            conn.commit()
+        if "attempts_json" not in cols:
+            conn.execute(
+                "ALTER TABLE episodes ADD COLUMN attempts_json TEXT NOT NULL "
+                "DEFAULT '[]'"
+            )
+            conn.commit()
+    except BaseException:
+        conn.close()
+        raise
     return conn
 
 
@@ -122,17 +132,43 @@ def completed_keys(conn: sqlite3.Connection, run_name: str) -> set[str]:
 
 
 def run_cost(conn: sqlite3.Connection, run_name: str) -> float:
-    """Summed OpenRouter spend recorded for a run."""
+    """Sum per-call charges and legacy episode costs without double counting."""
     row = conn.execute(
-        "SELECT COALESCE(SUM(cost_usd), 0) AS c FROM episodes "
-        "WHERE run_name = ?",
-        (run_name,),
+        "SELECT COALESCE((SELECT SUM(cost_usd) FROM episodes e "
+        "WHERE e.run_name = ? AND NOT EXISTS (SELECT 1 FROM budget_charges b "
+        "WHERE b.episode_id = e.id AND b.call_id = 'baseline:' || e.id)), 0) + "
+        "COALESCE((SELECT SUM(cost_usd) FROM budget_charges "
+        "WHERE run_name = ?), 0) AS c",
+        (run_name, run_name),
     ).fetchone()
     return float(row["c"])
 
 
+def record_budget_charge(
+    conn: sqlite3.Connection,
+    call_id: str,
+    episode_id: str,
+    run_name: str,
+    cost_usd: float,
+) -> None:
+    """Persist a paid call before another worker checks the cap."""
+    _ensure_baseline_charge(conn, episode_id, run_name)
+    conn.execute(
+        "INSERT OR IGNORE INTO budget_charges VALUES (?, ?, ?, ?)",
+        (call_id, episode_id, run_name, cost_usd),
+    )
+    conn.commit()
+
+
 def save_episode(conn: sqlite3.Connection, row: dict) -> None:
     """Insert or replace one episode row."""
+    charge_total = conn.execute(
+        "SELECT COALESCE(SUM(cost_usd), 0) FROM budget_charges "
+        "WHERE episode_id = ?",
+        (row["id"],),
+    ).fetchone()[0]
+    if charge_total:
+        row = {**row, "cost_usd": float(charge_total)}
     cols = ", ".join(row)
     marks = ", ".join("?" for _ in row)
     conn.execute(
@@ -140,3 +176,25 @@ def save_episode(conn: sqlite3.Connection, row: dict) -> None:
         tuple(row.values()),
     )
     conn.commit()
+
+
+def _ensure_baseline_charge(
+    conn: sqlite3.Connection, episode_id: str, run_name: str
+) -> None:
+    """Record an existing episode cost before its first ledger-backed save."""
+    baseline_id = f"baseline:{episode_id}"
+    if (
+        conn.execute(
+            "SELECT 1 FROM budget_charges WHERE call_id = ?", (baseline_id,)
+        ).fetchone()
+        is not None
+    ):
+        return
+    legacy = conn.execute(
+        "SELECT cost_usd FROM episodes WHERE id = ?", (episode_id,)
+    ).fetchone()
+    cost = legacy["cost_usd"] if legacy is not None else 0.0
+    conn.execute(
+        "INSERT OR IGNORE INTO budget_charges VALUES (?, ?, ?, ?)",
+        (baseline_id, episode_id, run_name, cost),
+    )

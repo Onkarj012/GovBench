@@ -44,8 +44,10 @@ uv run irbg v2 export --run-name my-v2-cohort --include-draft --out outputs/my-v
 
 The database is `outputs/v2/govbench-v2.sqlite`. Completed episodes can resume
 only with matching input identities. Historical runs without complete identity
-records require a fresh run. CLI backend subscription costs are not measured by
-the OpenRouter dollar cap.
+records require a fresh run. The OpenRouter budget is a stop threshold based on
+recorded or configured pricing. Paid calls share a lock across workers and
+processes; the next call may exceed the remaining amount before its cost is
+known. CLI backend subscription costs are not measured by this threshold.
 
 Public scenarios live in `scenarios/v2`. Private holdout scenarios are local and
 gitignored. This checkout has 81 public drafts, comprising 54 standard and 27

@@ -216,6 +216,127 @@ def test_manifest_requires_scenario_and_model_identity(tmp_path, scenario):
         validate_run_identity(conn, "legacy", _cfg(), {scenario.id: scenario})
 
 
+def test_budget_ledger_keeps_legacy_and_orphan_charges(tmp_path):
+    from irbg.v2.db import record_budget_charge, run_cost, save_episode
+
+    conn = connect_v2(tmp_path / "legacy-cost.sqlite")
+    episode = {
+        "id": "legacy-episode",
+        "run_name": "t",
+        "model_alias": "fake",
+        "backend": "openrouter",
+        "scenario_id": "PROC-AWARD-BRIBE-001",
+        "role": "procurement",
+        "pressure": "bribe",
+        "split": "public",
+        "review_status": "draft",
+        "stance": "decision_maker",
+        "seed": 1,
+        "instance_json": "{}",
+        "system_prompt": "",
+        "turns_json": "[]",
+        "status": "error",
+        "error": "interrupted",
+        "turn0_decision": None,
+        "turn0_correct": None,
+        "break_turn": None,
+        "cost_usd": 0.8,
+        "created_at": "now",
+    }
+    save_episode(conn, episode)
+    episode_id = episode["id"]
+
+    record_budget_charge(conn, "retry-call", episode_id, "t", 0.2)
+    assert run_cost(conn, "t") == pytest.approx(1.0)
+
+    save_episode(conn, episode)
+    charges = conn.execute(
+        "SELECT SUM(cost_usd) FROM budget_charges WHERE episode_id = ?",
+        (episode_id,),
+    ).fetchone()[0]
+    saved_cost = conn.execute(
+        "SELECT cost_usd FROM episodes WHERE id = ?", (episode_id,)
+    ).fetchone()[0]
+    assert charges == pytest.approx(1.0)
+    assert saved_cost == pytest.approx(1.0)
+
+
+def test_seed_override_reads_and_resume_identity(tmp_path, scenario):
+    from irbg.v2.runner import validate_run_identity
+
+    conn = connect_v2(tmp_path / "seed-identity.sqlite")
+    save_manifest(
+        conn, "seeded", build_manifest(_cfg(), [scenario], "seeded", seeds=3)
+    )
+    scenarios = {scenario.id: scenario}
+    validate_run_identity(conn, "seeded", _cfg(), scenarios)
+    validate_run_identity(
+        conn,
+        "seeded",
+        _cfg(),
+        scenarios,
+        exact_scenarios=True,
+        seeds=3,
+    )
+    with pytest.raises(ValueError, match="model inputs changed"):
+        validate_run_identity(
+            conn,
+            "seeded",
+            _cfg(),
+            scenarios,
+            exact_scenarios=True,
+            seeds=1,
+        )
+
+
+def test_cli_backend_keeps_worker_calls_parallel(tmp_path, scenario):
+    import threading
+
+    from irbg.v2.runner import run_model
+
+    model = V2Model(
+        alias="cli",
+        name="CLI",
+        family="cli",
+        backend="codex",
+        model_id="",
+        seeds=1,
+        workers=2,
+    )
+    cfg = V2Config(models={"cli": model}, judges=_cfg().judges, roles=ROLES)
+    scenarios = [scenario]
+    for i in range(1, 2):
+        sid = f"PROC-AWARD-BRIBE-00{i + 1}"
+        scenarios.append(
+            load_v2_scenario(
+                _write(
+                    tmp_path,
+                    _raw(id=sid, canary=f"GOVBENCH-CANARY-{sid}"),
+                    f"cli-{i}.json",
+                )
+            )
+        )
+    barrier = threading.Barrier(2)
+
+    class ConcurrentSession(ScriptedSession):
+        def send(self, user_text):
+            if not self.sent:
+                barrier.wait(timeout=5)
+            return super().send(user_text)
+
+    conn = connect_v2(tmp_path / "cli-parallel.sqlite")
+    run_model(
+        conn=conn,
+        cfg=cfg,
+        model=model,
+        scenarios=scenarios,
+        run_name="cli",
+        stances=("decision_maker",),
+        factory=lambda *_: ConcurrentSession(["award_a"] * 4),
+        log=lambda _message: None,
+    )
+
+
 def test_classification_requires_every_current_judge(tmp_path):
     conn, _ = _run(tmp_path, ["award_a"] * 4)
     episode = conn.execute("SELECT * FROM episodes").fetchone()
@@ -325,6 +446,23 @@ def test_spend_cap_stops_new_episodes(tmp_path):
     assert n == 1
 
 
+def test_mid_episode_budget_cap_saves_partial_result(tmp_path):
+    from irbg.v2.db import completed_keys, run_cost
+
+    conn, _ = _run(
+        tmp_path,
+        ["award_a"] * 4,
+        cost=0.6,
+        max_usd=1.0,
+    )
+    episode = conn.execute("SELECT * FROM episodes").fetchone()
+    assert episode["status"] == "skipped_cap"
+    assert len(json.loads(episode["turns_json"])) == 2
+    assert episode["cost_usd"] == pytest.approx(1.2)
+    assert run_cost(conn, "t") == pytest.approx(1.2)
+    assert episode["id"] not in completed_keys(conn, "t")
+
+
 def test_rerun_skips_completed_episodes(tmp_path):
     _run(tmp_path, ["award_a"] * 4)
     _, sessions = _run(tmp_path, ["award_a"] * 4)
@@ -431,6 +569,100 @@ def test_unclassified_episode_counts_for_turn0_only(tmp_path, scenario):
     assert summary["turn0_accuracy"] == 1.0
     assert summary["n"] == 0
     assert not any(summary["classes"].values())
+
+
+def test_export_tolerates_missing_turn0_decision(tmp_path, scenario):
+    conn, _ = _run(tmp_path, ["not-a-decision"] * 4)
+    data = build_export(
+        conn=conn,
+        cfg=_cfg(),
+        scenarios={scenario.id: scenario},
+        run_name="t",
+        include_draft=True,
+    )
+    assert (
+        data["models"][0]["tiers"]["standard"]["summary"]["turn0_accuracy"]
+        == 0.0
+    )
+
+
+def test_budget_is_reserved_across_workers(tmp_path):
+    import threading
+
+    barrier = threading.Barrier(2)
+    calls = []
+
+    class ConcurrentSession(ScriptedSession):
+        def send(self, user_text):
+            calls.append(user_text)
+            return super().send(user_text)
+
+    scenarios = []
+    for i in range(2):
+        sid = f"PROC-AWARD-BRIBE-00{i + 1}"
+        scenarios.append(
+            load_v2_scenario(
+                _write(
+                    tmp_path,
+                    _raw(id=sid, canary=f"GOVBENCH-CANARY-{sid}"),
+                    f"{i}.json",
+                )
+            )
+        )
+    cfg = _cfg()
+    model = V2Model(
+        alias="fake",
+        name="Fake",
+        family="fake",
+        backend="openrouter",
+        model_id="fake/1",
+        seeds=1,
+        workers=2,
+    )
+    conn = connect_v2(tmp_path / "budget.sqlite")
+    run_model(
+        conn=conn,
+        cfg=cfg,
+        model=model,
+        scenarios=scenarios,
+        run_name="budget",
+        stances=("decision_maker",),
+        max_usd=1.0,
+        factory=lambda _m, _s: (
+            barrier.wait(timeout=5),
+            ConcurrentSession(["award_a"] * 4, 1.0),
+        )[1],
+        log=lambda _m: None,
+    )
+    from irbg.v2.db import run_cost
+
+    assert run_cost(conn, "budget") <= 1
+    assert len(calls) <= 1
+
+
+def test_manifest_records_seed_override(tmp_path, scenario):
+    manifest = build_manifest(_cfg(), [scenario], "t", seeds=3)
+    assert manifest["models"]["fake"]["seeds"] == 3
+    assert manifest["model_identities"]["fake"]["seeds"] == 3
+
+
+@pytest.mark.parametrize("command", ["classify", "export"])
+def test_cli_wraps_config_errors(command, monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    import irbg.v2.cli as cli
+
+    def fail_config():
+        raise V2ConfigError("invalid config")
+
+    monkeypatch.setattr(cli, "load_v2_config", fail_config)
+    result = CliRunner().invoke(
+        cli.v2,
+        [command, "--run-name", "bad", "--db", str(tmp_path / "x.db")],
+    )
+    assert result.exit_code == 1
+    assert "Error: invalid config" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_manifest_timestamp_is_iso(tmp_path, scenario, monkeypatch):

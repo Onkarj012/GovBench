@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import random
 import re
 import subprocess
 import threading
+import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -24,14 +27,17 @@ from irbg.v2.backends import (
     CodexSession,
     OpenRouterSession,
     Session,
+    TurnReply,
     cli_versions,
     openrouter_client_from_env,
 )
 from irbg.v2.config import STANCES, V2Config, V2Model
 from irbg.v2.db import (
     completed_keys,
+    connect_v2,
     episode_key,
     now_iso,
+    record_budget_charge,
     run_cost,
     save_episode,
 )
@@ -99,7 +105,11 @@ def parse_decision(text: str, options: tuple[str, ...]) -> str | None:
 
 
 def run_episode(
-    cfg: V2Config, model: V2Model, job: EpisodeJob, session: Session
+    cfg: V2Config,
+    model: V2Model,
+    job: EpisodeJob,
+    session: Session,
+    send: Callable[[int, str], TurnReply] | None = None,
 ) -> dict:
     """Play turn 0 then the pressure turns (stop at first break) or the
     control turn."""
@@ -117,9 +127,12 @@ def run_episode(
     cost = 0.0
     for index, prompt in enumerate(prompts):
         try:
-            reply = session.send(prompt)
+            reply = send(index, prompt) if send else session.send(prompt)
         except BackendError as exc:
             result = _episode_result(s, facts, turns, break_turn, cost)
+            if isinstance(exc, BudgetCapReached):
+                exc.result = result
+                raise
             raise EpisodeFailure(str(exc), result) from exc
         decision = parse_decision(reply.text, s.options)
         cost += reply.cost_usd or 0.0
@@ -174,6 +187,24 @@ class EpisodeFailure(BackendError):
     def __init__(self, message: str, result: dict) -> None:
         super().__init__(message)
         self.result = result
+
+
+class BudgetCapReached(BackendError):
+    """Raised before a provider call when recorded spend reached the cap."""
+
+    result: dict
+
+
+@contextmanager
+def _budget_lock(path: Path):
+    """Serialize paid calls across threads and processes for one database."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 def default_session_factory() -> SessionFactory:
@@ -234,7 +265,10 @@ def _git_sha() -> str:
 
 
 def build_manifest(
-    cfg: V2Config, scenarios: list[ScenarioV2], run_name: str
+    cfg: V2Config,
+    scenarios: list[ScenarioV2],
+    run_name: str,
+    seeds: int | None = None,
 ) -> dict:
     """Provenance for a run: scenario hash, models, CLIs, git SHA, time."""
     scenario_hashes = {
@@ -253,7 +287,11 @@ def build_manifest(
         "scenario_ids": [s.id for s in scenarios],
         "scenario_hashes": scenario_hashes,
         "model_identities": {
-            alias: asdict(model) for alias, model in cfg.models.items()
+            alias: {
+                **asdict(model),
+                "seeds": seeds if seeds is not None else model.seeds,
+            }
+            for alias, model in cfg.models.items()
         },
         "role_prompts": cfg.roles,
         "judge_identities": [asdict(judge) for judge in cfg.judges],
@@ -261,7 +299,7 @@ def build_manifest(
             a: {
                 "backend": m.backend,
                 "model_id": m.model_id,
-                "seeds": m.seeds,
+                "seeds": seeds if seeds is not None else m.seeds,
                 "temperature": m.temperature
                 if m.backend == "openrouter"
                 else None,
@@ -279,6 +317,7 @@ def validate_run_identity(
     scenarios,
     *,
     exact_scenarios: bool = False,
+    seeds: int | None = None,
 ) -> None:
     """Reject a run with unknown or stale inputs."""
     row = conn.execute(
@@ -296,7 +335,13 @@ def validate_run_identity(
         raise ValueError(
             f"run {run_name!r} lacks verifiable identity; start a fresh run"
         )
-    current = build_manifest(cfg, list(scenarios.values()), run_name)
+    current = build_manifest(
+        cfg, list(scenarios.values()), run_name, seeds=seeds
+    )
+    if seeds is None and not exact_scenarios:
+        for alias, saved in manifest["model_identities"].items():
+            if alias in current["model_identities"]:
+                current["model_identities"][alias]["seeds"] = saved["seeds"]
     saved_hashes = manifest["scenario_hashes"]
     current_hashes = current["scenario_hashes"]
     if exact_scenarios and set(saved_hashes) != set(current_hashes):
@@ -347,7 +392,9 @@ def run_model(
     done = completed_keys(conn, run_name)
     jobs = [
         j
-        for j in build_jobs(scenarios, seeds or model.seeds, stances)
+        for j in build_jobs(
+            scenarios, seeds if seeds is not None else model.seeds, stances
+        )
         if episode_key(
             run_name, model.alias, j.scenario.id, j.stance, j.seed, j.kind
         )
@@ -358,25 +405,61 @@ def run_model(
     # Workers check and add to this before the DB row exists, so the cap
     # holds even when the next job starts before the main thread saves.
     spend = {"usd": run_cost(conn, run_name)}
+    db_path = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    lock_name = hashlib.sha256(run_name.encode()).hexdigest()[:16]
+    lock_path = db_path.with_name(f".{db_path.name}.{lock_name}.budget.lock")
 
     def work(job: EpisodeJob) -> tuple[EpisodeJob, str, dict | None, str]:
-        with lock:
-            if spend["usd"] >= max_usd:
-                return job, "skipped_cap", None, ""
         system = system_prompt(cfg, job.scenario, job.stance)
         session = make(model, system)
+
+        def send(index: int, prompt: str):
+            with _budget_lock(lock_path):
+                budget_conn = connect_v2(db_path)
+                try:
+                    current = run_cost(budget_conn, run_name)
+                    if current >= max_usd:
+                        spend["usd"] = current
+                        raise BudgetCapReached("--max-usd reached")
+                    reply = session.send(prompt)
+                    if reply.cost_usd is not None:
+                        episode_id = episode_key(
+                            run_name,
+                            model.alias,
+                            job.scenario.id,
+                            job.stance,
+                            job.seed,
+                            job.kind,
+                        )
+                        record_budget_charge(
+                            budget_conn,
+                            uuid.uuid4().hex,
+                            episode_id,
+                            run_name,
+                            reply.cost_usd,
+                        )
+                        spend["usd"] = run_cost(budget_conn, run_name)
+                    return reply
+                finally:
+                    budget_conn.close()
+
         try:
-            result = run_episode(cfg, model, job, session)
+            result = run_episode(
+                cfg,
+                model,
+                job,
+                session,
+                send=send if model.backend == "openrouter" else None,
+            )
         except BackendError as exc:
             result = exc.result if isinstance(exc, EpisodeFailure) else None
-            if result is not None:
-                with lock:
-                    spend["usd"] += result["cost_usd"]
-            return job, "error", result, str(exc)
+            status = "error"
+            if isinstance(exc, BudgetCapReached):
+                result = exc.result
+                status = "skipped_cap"
+            return job, status, result, str(exc)
         finally:
             session.close()
-        with lock:
-            spend["usd"] += result["cost_usd"]
         return job, "complete", result, ""
 
     with ThreadPoolExecutor(max_workers=max(1, model.workers)) as ex:
@@ -384,7 +467,9 @@ def run_model(
         for fut in as_completed(futures):
             job, status, result, error = fut.result()
             counts[status] += 1
-            if status == "skipped_cap":
+            if status == "skipped_cap" and (
+                result is None or not result["turns"]
+            ):
                 continue
             s = job.scenario
             with lock:
