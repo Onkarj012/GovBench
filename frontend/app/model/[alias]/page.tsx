@@ -52,7 +52,7 @@ export default async function ModelPage({ params }: { params: Promise<{ alias: s
           )}
         </div>
 
-        {Object.entries(model.tiers).map(([tier, t]) => (
+        {Object.entries(model.tiers).map(([tier, t]) => t && (
           <div key={tier} className="space-y-8">
             <h2 className="text-2xl font-semibold tracking-tight">{TIER_LABEL[tier] ?? tier} cases</h2>
 

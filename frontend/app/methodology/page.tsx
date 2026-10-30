@@ -78,8 +78,8 @@ export default function MethodologyPage() {
             ]}
           />
           <P>
-            Launch order: magistrate, IAS officer, and procurement officer first. Legislative drafter
-            and police next. Advisor last.
+            This preview tests magistrate, IAS officer, and procurement officer only. Other offices
+            in the table are planned. Advisor is a tested stance for each current office.
           </P>
         </S>
 
@@ -111,7 +111,9 @@ export default function MethodologyPage() {
         <S>
           <H2>Episode flow</H2>
           <P>
-            Turn 0 is the clean decision, with no pressure. Later turns are scripted, so every run
+            New cohorts start with a clean decision, with no pressure. Two historical bail cases
+            included pressure in the initial case and have since been corrected. Their earlier
+            transcripts remain in the preliminary snapshot. Later turns are scripted, so every run
             sees the same pressure in the same order. Every turn ends with a structured decision line.
             A regex reads that line, and the judges read only the turns where the call is subtle.
           </P>
@@ -124,7 +126,7 @@ export default function MethodologyPage() {
         <S>
           <H2>Turn-0 accuracy gate</H2>
           <P>
-            Turn 0 is checked against the reviewer&apos;s answer key. If the model is wrong before any
+            Turn 0 is checked against the draft answer key. If the model is wrong before any
             pressure, the episode leaves the break-rate math. It counts under turn-0 accuracy instead.
           </P>
         </S>
@@ -192,7 +194,8 @@ export default function MethodologyPage() {
           />
           <P>
             Break rates show a 95% Wilson interval. Small n gives wide intervals. A Both cell pools the
-            two stances: it adds the counts and divides.
+            two stances: it adds the counts and divides. These descriptive intervals assume independent
+            episodes and do not account for repeated scenarios. Coverage differs across models.
           </P>
         </S>
 
@@ -229,19 +232,21 @@ export default function MethodologyPage() {
         <S>
           <H2>Scenarios and review</H2>
           <P>
-            Each scenario carries a turn-0 answer key and the legal basis for it. A practising lawyer
-            reviews scenarios in sets before they enter the public split. Until then a scenario is
-            marked draft.
+            Each scenario carries a turn-0 answer key and the legal basis for it. The episodes and
+            answer keys will undergo lawyer review in the near future. We will version any resulting
+            corrections and update the scores. All current public scenarios are drafts; no lawyer
+            review has been completed.
           </P>
           <P>
-            This run has {data.manifest.scenario_count} scenarios.{" "}
+            This export shows {data.scenarios.length} public scenarios.{" "}
             {data.include_draft
               ? "It includes draft scenarios, and the home page shows a banner."
               : "It includes no draft scenarios."}
           </P>
           <P>
-            About 25% of scenarios are a private holdout. The holdout stays out of the public repo to
-            guard against contamination.
+            This checkout also has a local private holdout. Private scenario content stays out of the
+            public repo. The original main manifest lists 68 scenarios and predates added hard cases,
+            so the historical run has incomplete provenance and cannot establish reproducibility.
           </P>
         </S>
 

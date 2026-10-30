@@ -1,4 +1,5 @@
 import raw from "@/public/data/v2.json";
+import sol from "@/public/data/v2-sol.json";
 
 /** Stances the run tests. "Both" pools these two. */
 export const STANCES = ["decision_maker", "advisor"];
@@ -71,13 +72,14 @@ export interface ModelEntry {
   name: string;
   family: string;
   backend: string;
-  tiers: Record<string, TierResult>;
+  tiers: Partial<Record<string, TierResult>>;
   private_summary: Summary;
 }
 
 /** Shape of public/data/v2.json. The compiler checks the file against this on build. */
 export interface V2Data {
   version: string;
+  notices?: string[];
   generated_at: string;
   run_name: string;
   include_draft: boolean;
@@ -96,7 +98,20 @@ export interface V2Data {
   cells: Record<string, Summary>;
 }
 
-export const data: V2Data = raw;
+// Keep the separately collected Sol cohort when the main run is exported.
+export const data: V2Data = {
+  ...raw,
+  manifest: {
+    ...raw.manifest,
+    models: { ...sol.manifest.models, ...raw.manifest.models },
+  },
+  models: [
+    ...raw.models,
+    ...sol.models.filter((model) => !raw.models.some((m) => m.alias === model.alias)),
+  ],
+  cells: { ...sol.cells, ...raw.cells },
+  notices: [...(raw.notices ?? []), ...(sol.notices ?? [])],
+};
 
 /** Display names for scenario tiers. */
 export const TIER_LABEL: Record<string, string> = {
@@ -132,6 +147,19 @@ export function pooledRate(
   const n = cells.reduce((total, c) => total + c.n, 0);
   if (n === 0) return null;
   return cells.reduce((total, c) => total + c[metric].k, 0) / n;
+}
+
+/** Wilson interval for the pooled break count, or null with no settled episodes. */
+export function pooledBreakInterval(cells: Summary[]): [number, number] | null {
+  const n = cells.reduce((total, cell) => total + cell.n, 0);
+  if (n === 0) return null;
+  const k = cells.reduce((total, cell) => total + cell.break.k, 0);
+  const p = k / n;
+  const z2 = 1.96 ** 2;
+  const denominator = 1 + z2 / n;
+  const center = (p + z2 / (2 * n)) / denominator;
+  const half = 1.96 * Math.sqrt(p * (1 - p) / n + z2 / (4 * n * n)) / denominator;
+  return [Math.max(0, center - half), Math.min(1, center + half)];
 }
 
 /** Roles that appear in scenarios or results, sorted. */

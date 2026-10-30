@@ -7,9 +7,15 @@ from pathlib import Path
 import pytest
 
 from irbg.scenarios.v2 import ScenarioV2Error, load_v2_scenario
-from irbg.v2.backends import TurnReply
-from irbg.v2.classify import classify, classify_control, redact
-from irbg.v2.config import V2Config, V2Judge, V2Model
+from irbg.v2.backends import BackendError, TurnReply
+from irbg.v2.classify import (
+    PROMPT_HASH,
+    classify,
+    classify_control,
+    classify_run,
+    redact,
+)
+from irbg.v2.config import V2Config, V2ConfigError, V2Judge, V2Model
 from irbg.v2.db import connect_v2, save_manifest
 from irbg.v2.matrix import build_export, flagged_scenarios
 from irbg.v2.runner import (
@@ -122,6 +128,152 @@ def test_parse_decision_handles_markdown_and_rejects_unknown():
     opts = ("award_a", "award_b")
     assert parse_decision("x\n**DECISION:** `award_b`", opts) == "award_b"
     assert parse_decision("DECISION: maybe", opts) is None
+
+
+def test_parse_decision_uses_only_final_standalone_decision_line():
+    opts = ("award_a", "award_b")
+    assert (
+        parse_decision("Quoted DECISION: award_b\nDECISION: award_a", opts)
+        == "award_a"
+    )
+    assert (
+        parse_decision("DECISION: award_b\nFinal choice: undecided", opts)
+        is None
+    )
+
+
+def test_failed_episode_saves_partial_turns_and_retry_keeps_spend(tmp_path):
+    scenario = load_v2_scenario(_write(tmp_path, _raw()))
+    conn = connect_v2(tmp_path / "retry.sqlite")
+    cfg = _cfg()
+    model = cfg.models["fake"]
+
+    class FailingSession:
+        def __init__(self):
+            self.calls = 0
+
+        def send(self, _prompt):
+            self.calls += 1
+            if self.calls == 1:
+                return TurnReply("DECISION: award_a", 1, cost_usd=0.4)
+            raise BackendError("provider failed")
+
+        def close(self):
+            pass
+
+    run_model(
+        conn=conn,
+        cfg=cfg,
+        model=model,
+        scenarios=[scenario],
+        run_name="retry",
+        stances=("decision_maker",),
+        factory=lambda *_: FailingSession(),
+        log=lambda _message: None,
+    )
+    failed = conn.execute("SELECT * FROM episodes").fetchone()
+    assert failed["status"] == "error"
+    assert len(json.loads(failed["turns_json"])) == 1
+    assert failed["cost_usd"] == 0.4
+
+    run_model(
+        conn=conn,
+        cfg=cfg,
+        model=model,
+        scenarios=[scenario],
+        run_name="retry",
+        stances=("decision_maker",),
+        factory=lambda *_: ScriptedSession(["award_a"] * 4, cost=0.1),
+        log=lambda _message: None,
+    )
+    retried = conn.execute("SELECT * FROM episodes").fetchone()
+    assert retried["status"] == "complete"
+    assert retried["cost_usd"] == pytest.approx(0.8)
+
+
+def test_manifest_requires_scenario_and_model_identity(tmp_path, scenario):
+    from irbg.v2.runner import validate_run_identity
+
+    conn = connect_v2(tmp_path / "identity.sqlite")
+    save_manifest(conn, "t", build_manifest(_cfg(), [scenario], "t"))
+    changed_model = V2Model(
+        alias="fake",
+        name="Fake",
+        family="fake",
+        backend="openrouter",
+        model_id="fake/changed",
+        seeds=1,
+        workers=1,
+    )
+    changed = V2Config(
+        models={"fake": changed_model}, judges=_cfg().judges, roles=ROLES
+    )
+    with pytest.raises(ValueError, match="fresh run"):
+        validate_run_identity(conn, "t", changed, {scenario.id: scenario})
+
+    save_manifest(conn, "legacy", {"scenario_ids": [scenario.id]})
+    with pytest.raises(ValueError, match="fresh run"):
+        validate_run_identity(conn, "legacy", _cfg(), {scenario.id: scenario})
+
+
+def test_classification_requires_every_current_judge(tmp_path):
+    conn, _ = _run(tmp_path, ["award_a"] * 4)
+    episode = conn.execute("SELECT * FROM episodes").fetchone()
+    conn.execute(
+        "INSERT INTO classifications VALUES (?, 'HOLD', 0, '{}', 'now')",
+        (episode["id"],),
+    )
+    old = _verdict()
+    conn.execute(
+        "INSERT INTO verdicts VALUES (?, ?, ?, ?, ?)",
+        (episode["id"], "removed-judge", PROMPT_HASH, json.dumps(old), "now"),
+    )
+    conn.execute(
+        "INSERT INTO verdicts VALUES (?, ?, ?, ?, ?)",
+        (episode["id"], "j1", PROMPT_HASH, json.dumps(old), "now"),
+    )
+    conn.commit()
+
+    class FailedJudge:
+        def send(self, _prompt):
+            raise BackendError("offline")
+
+        def close(self):
+            pass
+
+    scenario = load_v2_scenario(_write(tmp_path, _raw()))
+    result = classify_run(
+        conn=conn,
+        run_name="t",
+        scenarios={scenario.id: scenario},
+        judges=(V2Judge("j1", "codex", "j1"), V2Judge("j2", "codex", "j2")),
+        ask={"j2"},
+        make_session=lambda _judge: FailedJudge(),
+        log=lambda _message: None,
+    )
+    assert result.get("pending") == 1
+    assert (
+        conn.execute(
+            "SELECT 1 FROM classifications WHERE episode_id = ?",
+            (episode["id"],),
+        ).fetchone()
+        is None
+    )
+
+
+def test_config_rejects_openrouter_judge_backend(tmp_path):
+    from irbg.v2.config import load_v2_config
+
+    path = tmp_path / "v2.yaml"
+    path.write_text(
+        "models: {}\n"
+        "judges:\n  judge-x:\n    backend: openrouter\n"
+        "    model_id: x/y\n"
+        "roles:\n  magistrate:\n"
+        "    decision_maker: decide\n    advisor: advise\n"
+    )
+    with pytest.raises(V2ConfigError, match="judge.*backend"):
+        load_v2_config(path)
 
 
 def _run(tmp_path, decisions, cost=0.0, max_usd=10.0, n_scenarios=1):

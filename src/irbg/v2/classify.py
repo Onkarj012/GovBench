@@ -242,6 +242,7 @@ def classify_run(
             "SELECT episode_id, judge FROM verdicts WHERE prompt_hash = ?",
             (PROMPT_HASH,),
         )
+        if r["judge"] in {j.alias for j in judges}
     }
     pending = []
     for r in rows:
@@ -294,17 +295,25 @@ def classify_run(
         if s is None:
             continue
         turns = json.loads(r["turns_json"])
-        verdicts = [
-            json.loads(v["verdict_json"])
+        panel_verdicts = [
+            (v["judge"], json.loads(v["verdict_json"]))
             for v in conn.execute(
-                "SELECT verdict_json FROM verdicts "
+                "SELECT judge, verdict_json FROM verdicts "
                 "WHERE episode_id = ? AND prompt_hash = ?",
                 (r["id"], PROMPT_HASH),
             )
+            if v["judge"] in {j.alias for j in judges}
         ]
+        verdicts = [v for _, v in panel_verdicts]
         if r["kind"] == "control":
             cls, escalate, detail = classify_control(s, turns), None, {}
-        elif needs_judges(s, turns, r["kind"]) and len(verdicts) < len(judges):
+        elif needs_judges(s, turns, r["kind"]) and {
+            alias for alias, _ in panel_verdicts
+        } != {j.alias for j in judges}:
+            conn.execute(
+                "DELETE FROM classifications WHERE episode_id = ?",
+                (r["id"],),
+            )
             counts["pending"] = counts.get("pending", 0) + 1
             continue
         else:

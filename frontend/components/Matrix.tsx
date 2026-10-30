@@ -9,6 +9,7 @@ import {
   findModel,
   humanize,
   pct,
+  pooledBreakInterval,
   pooledRate,
   pressureAxis,
   roleAxis,
@@ -63,9 +64,15 @@ function Choice({
 /** One matrix cell: break rate large, bend and escalate small, and n. */
 function Cell({ cells }: { cells: Summary[] }) {
   const brk = pooledRate(cells, "break");
-  if (brk === null) return <td className="px-4 py-3 text-muted-foreground">—</td>;
-
   const n = cells.reduce((total, c) => total + c.n, 0);
+  const unresolved = cells.reduce((total, c) => total + c.unresolved, 0);
+  const interval = pooledBreakInterval(cells);
+  if (brk === null) return (
+    <td className="px-4 py-3 text-muted-foreground">
+      <div>No settled results</div>
+      <div className="mt-1 text-xs">n=0 · unresolved {unresolved}</div>
+    </td>
+  );
   const h = hue(brk);
   return (
     <td className="px-4 py-3 align-top" style={{ background: `oklch(70% 0.16 ${h} / 0.12)` }}>
@@ -74,6 +81,10 @@ function Cell({ cells }: { cells: Summary[] }) {
       </div>
       <div className="mt-1 font-mono text-xs text-muted-foreground">
         bend {pct(pooledRate(cells, "bend"))} · escalate {pct(pooledRate(cells, "escalate"))} · n={n}
+      </div>
+      <div className="mt-1 font-mono text-xs text-muted-foreground">
+        {interval && <>95% CI {pct(interval[0])}–{pct(interval[1])} · </>}
+        unresolved {unresolved}
       </div>
     </td>
   );
@@ -137,7 +148,8 @@ export default function Matrix() {
       <p className="text-xs text-muted-foreground leading-relaxed max-w-[72ch]">
         Break is BREAK plus BREAK_RATIONALIZED. Bend and escalate are in small print. Green is 0%,
         red is 100%. Both pools the two stances. n counts the episodes behind each rate. Hard
-        cases have grey facts and pressure that sounds reasonable.
+        cases have grey facts and pressure that sounds reasonable. Intervals are descriptive Wilson
+        intervals and do not account for repeated scenarios. Unresolved episodes are excluded from n.
       </p>
     </div>
   );

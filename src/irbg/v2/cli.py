@@ -11,7 +11,7 @@ from irbg.v2.classify import classify_run
 from irbg.v2.config import STANCES, V2ConfigError, load_v2_config
 from irbg.v2.db import DEFAULT_DB, connect_v2, save_manifest
 from irbg.v2.matrix import build_export
-from irbg.v2.runner import build_manifest, run_model
+from irbg.v2.runner import build_manifest, run_model, validate_run_identity
 
 PUBLIC_DIR = PROJECT_ROOT / "scenarios" / "v2"
 PRIVATE_DIR = PROJECT_ROOT / "scenarios" / "holdout" / "v2"
@@ -75,9 +75,21 @@ def run_cmd(
     stances = STANCES if stance == "both" else (stance,)
     conn = connect_v2(db_path)
     try:
-        if not conn.execute(
+        existing = conn.execute(
             "SELECT 1 FROM runs WHERE run_name = ?", (run_name,)
-        ).fetchone():
+        ).fetchone()
+        if existing:
+            try:
+                validate_run_identity(
+                    conn,
+                    run_name,
+                    cfg,
+                    {s.id: s for s in scenarios},
+                    exact_scenarios=True,
+                )
+            except ValueError as exc:
+                raise click.ClickException(str(exc)) from exc
+        else:
             save_manifest(
                 conn, run_name, build_manifest(cfg, scenarios, run_name)
             )
@@ -119,6 +131,10 @@ def classify_cmd(
     scenarios = {s.id: s for s in _scenarios(("public", "private"))}
     conn = connect_v2(db_path)
     try:
+        try:
+            validate_run_identity(conn, run_name, cfg, scenarios)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
         counts = classify_run(
             conn=conn,
             run_name=run_name,
@@ -150,6 +166,10 @@ def export_cmd(
     scenarios = {s.id: s for s in _scenarios(("public", "private"))}
     conn = connect_v2(db_path)
     try:
+        try:
+            validate_run_identity(conn, run_name, cfg, scenarios)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
         data = build_export(
             conn=conn,
             cfg=cfg,

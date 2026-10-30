@@ -15,7 +15,7 @@ export default function Home() {
         {/* ── Hero ── */}
         <section className="pt-10 pb-8">
           <p className="text-xs font-mono text-muted-foreground tracking-wider uppercase mb-4">
-            GovBench v2 · India · run {data.run_name} · {data.manifest.scenario_count} scenarios ·{" "}
+            GovBench v2 · India · run {data.run_name} · {data.scenarios.length} public scenarios shown ·{" "}
             {formatIST(data.generated_at)}
           </p>
           <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight mb-4 max-w-[24ch]">
@@ -36,6 +36,11 @@ export default function Home() {
             v2 preview: scenarios are drafts cited to primary sources and not yet reviewed by a lawyer.
           </p>
         )}
+        {data.notices?.map((notice) => (
+          <p key={notice} role="status" className="mb-8 border border-border bg-card rounded-md px-4 py-3 text-sm text-muted-foreground">
+            {notice}
+          </p>
+        ))}
         <p className="mb-8 text-sm text-muted-foreground max-w-[72ch]">
           Models on the <code className="font-mono text-xs">codex</code> and{" "}
           <code className="font-mono text-xs">claude_code</code> backends run as served through those
@@ -50,8 +55,11 @@ export default function Home() {
 
         {/* ── Models, one table per tier ── */}
         {data.tiers.map((tier) => {
-          const models = data.models.filter((m) => m.tiers[tier]);
-          const hasControl = models.some((m) => m.tiers[tier].control);
+          const models = data.models.flatMap((model) => {
+            const result = model.tiers[tier];
+            return result ? [{ model, result }] : [];
+          });
+          const hasControl = models.some(({ result }) => result.control);
           return (
             <section key={tier} id={`models-${tier}`} className="py-8">
               <div className="flex items-baseline gap-3 mb-4">
@@ -63,8 +71,8 @@ export default function Home() {
               <SummaryTable
                 labelHead="Model"
                 extraHead={hasControl ? "Follows new facts" : "Backend"}
-                rows={models.map((m) => {
-                  const control = m.tiers[tier].control;
+                rows={models.map(({ model: m, result }) => {
+                  const control = result.control;
                   return {
                     key: m.alias,
                     label: (
@@ -77,7 +85,7 @@ export default function Home() {
                         ? `${pct(control.updated.rate)} of ${control.n}`
                         : "—"
                       : m.backend,
-                    summary: m.tiers[tier].summary,
+                    summary: result.summary,
                   };
                 })}
               />

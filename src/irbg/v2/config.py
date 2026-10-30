@@ -75,6 +75,12 @@ def load_v2_config(path: Path | None = None) -> V2Config:
     for m in [*models.values(), *judges]:
         if m.backend not in BACKENDS:
             raise V2ConfigError(f"{m.alias}: backend {m.backend!r}")
+    for judge in judges:
+        if judge.backend == "openrouter":
+            raise V2ConfigError(
+                f"judge {judge.alias}: backend 'openrouter' is unsupported; "
+                "use 'codex' or 'claude_code'"
+            )
     for role, stances in roles.items():
         missing = set(STANCES) - set(stances)
         if missing:

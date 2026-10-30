@@ -8,7 +8,7 @@ import subprocess
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from irbg.engine.fact_generator import (
@@ -80,11 +80,21 @@ def instance_facts(s: ScenarioV2, seed: int) -> dict:
 
 
 def parse_decision(text: str, options: tuple[str, ...]) -> str | None:
-    """Last valid DECISION line in a reply, or None."""
-    for raw in reversed(_DECISION_RE.findall(text or "")):
-        d = raw.lower()
-        if d in options:
-            return d
+    """Parse the final standalone decision line, or return None."""
+    lines = (text or "").splitlines()
+    for line in reversed(lines):
+        if not line.strip():
+            continue
+        match = re.fullmatch(
+            r"\s*\**\s*DECISION\s*\**\s*:\s*\**\s*`?"
+            r"([A-Za-z][A-Za-z0-9_]*)`?\s*\**\s*",
+            line,
+            re.IGNORECASE,
+        )
+        if match is None:
+            return None
+        decision = match.group(1).lower()
+        return decision if decision in options else None
     return None
 
 
@@ -106,7 +116,11 @@ def run_episode(
     break_turn: int | None = None
     cost = 0.0
     for index, prompt in enumerate(prompts):
-        reply = session.send(prompt)
+        try:
+            reply = session.send(prompt)
+        except BackendError as exc:
+            result = _episode_result(s, facts, turns, break_turn, cost)
+            raise EpisodeFailure(str(exc), result) from exc
         decision = parse_decision(reply.text, s.options)
         cost += reply.cost_usd or 0.0
         turns.append(
@@ -128,15 +142,38 @@ def run_episode(
         ):
             break_turn = index
             break
-    t0 = turns[0]["decision"]
+    return _episode_result(s, facts, turns, break_turn, cost)
+
+
+def _episode_result(
+    scenario: ScenarioV2,
+    facts: dict,
+    turns: list[dict],
+    break_turn: int | None,
+    cost: float,
+) -> dict:
+    """Build complete or partial episode output after the last reply."""
+    t0 = turns[0]["decision"] if turns else None
     return {
         "facts": facts,
         "turns": turns,
         "turn0_decision": t0,
-        "turn0_correct": int(t0 in s.answer_key.acceptable),
+        "turn0_correct": (
+            int(t0 in scenario.answer_key.acceptable)
+            if t0 is not None
+            else None
+        ),
         "break_turn": break_turn,
         "cost_usd": round(cost, 6),
     }
+
+
+class EpisodeFailure(BackendError):
+    """Backend failure with completed turns and cost from this attempt."""
+
+    def __init__(self, message: str, result: dict) -> None:
+        super().__init__(message)
+        self.result = result
 
 
 def default_session_factory() -> SessionFactory:
@@ -200,10 +237,11 @@ def build_manifest(
     cfg: V2Config, scenarios: list[ScenarioV2], run_name: str
 ) -> dict:
     """Provenance for a run: scenario hash, models, CLIs, git SHA, time."""
-    blobs = sorted(
-        hashlib.sha256(Path(s.source_path).read_bytes()).hexdigest()
+    scenario_hashes = {
+        s.id: hashlib.sha256(Path(s.source_path).read_bytes()).hexdigest()
         for s in scenarios
-    )
+    }
+    blobs = sorted(scenario_hashes.values())
     return {
         "run_name": run_name,
         "timestamp": now_iso(),
@@ -213,6 +251,12 @@ def build_manifest(
             "\n".join(blobs).encode()
         ).hexdigest()[:16],
         "scenario_ids": [s.id for s in scenarios],
+        "scenario_hashes": scenario_hashes,
+        "model_identities": {
+            alias: asdict(model) for alias, model in cfg.models.items()
+        },
+        "role_prompts": cfg.roles,
+        "judge_identities": [asdict(judge) for judge in cfg.judges],
         "models": {
             a: {
                 "backend": m.backend,
@@ -226,6 +270,63 @@ def build_manifest(
         },
         "cli_versions": cli_versions(),
     }
+
+
+def validate_run_identity(
+    conn,
+    run_name: str,
+    cfg: V2Config,
+    scenarios,
+    *,
+    exact_scenarios: bool = False,
+) -> None:
+    """Reject a run with unknown or stale inputs."""
+    row = conn.execute(
+        "SELECT manifest_json FROM runs WHERE run_name = ?", (run_name,)
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"run {run_name!r} has no manifest; start a fresh run")
+    manifest = json.loads(row["manifest_json"])
+    if (
+        "scenario_hashes" not in manifest
+        or "model_identities" not in manifest
+        or "role_prompts" not in manifest
+        or "judge_identities" not in manifest
+    ):
+        raise ValueError(
+            f"run {run_name!r} lacks verifiable identity; start a fresh run"
+        )
+    current = build_manifest(cfg, list(scenarios.values()), run_name)
+    saved_hashes = manifest["scenario_hashes"]
+    current_hashes = current["scenario_hashes"]
+    if exact_scenarios and set(saved_hashes) != set(current_hashes):
+        raise ValueError(
+            f"run {run_name!r} scenario set changed; start a fresh run"
+        )
+    if any(
+        current_hashes.get(sid) != digest
+        for sid, digest in saved_hashes.items()
+    ):
+        raise ValueError(
+            f"run {run_name!r} scenario inputs changed or are missing; "
+            "start a fresh run"
+        )
+    if len(scenarios) == len(saved_hashes) and current_hashes != saved_hashes:
+        raise ValueError(
+            f"run {run_name!r} scenario inputs changed; start a fresh run"
+        )
+    if manifest["model_identities"] != current["model_identities"]:
+        raise ValueError(
+            f"run {run_name!r} model inputs changed; start a fresh run"
+        )
+    if manifest["role_prompts"] != current["role_prompts"]:
+        raise ValueError(
+            f"run {run_name!r} role prompts changed; start a fresh run"
+        )
+    if manifest["judge_identities"] != current["judge_identities"]:
+        raise ValueError(
+            f"run {run_name!r} judge inputs changed; start a fresh run"
+        )
 
 
 def run_model(
@@ -267,7 +368,11 @@ def run_model(
         try:
             result = run_episode(cfg, model, job, session)
         except BackendError as exc:
-            return job, "error", None, str(exc)
+            result = exc.result if isinstance(exc, EpisodeFailure) else None
+            if result is not None:
+                with lock:
+                    spend["usd"] += result["cost_usd"]
+            return job, "error", result, str(exc)
         finally:
             session.close()
         with lock:
@@ -283,17 +388,38 @@ def run_model(
                 continue
             s = job.scenario
             with lock:
+                eid = episode_key(
+                    run_name,
+                    model.alias,
+                    s.id,
+                    job.stance,
+                    job.seed,
+                    job.kind,
+                )
+                previous = conn.execute(
+                    "SELECT turns_json, cost_usd, attempts_json, error "
+                    "FROM episodes WHERE id = ?",
+                    (eid,),
+                ).fetchone()
+                attempts = (
+                    json.loads(previous["attempts_json"]) if previous else []
+                )
+                turns = result["turns"] if result else []
+                cost_usd = result["cost_usd"] if result else 0.0
+                prior_cost = previous["cost_usd"] if previous else 0.0
+                if previous:
+                    cost_usd += prior_cost
+                attempts.append(
+                    {
+                        "turns": turns,
+                        "cost_usd": result["cost_usd"] if result else 0.0,
+                        "error": error or None,
+                    }
+                )
                 save_episode(
                     conn,
                     {
-                        "id": episode_key(
-                            run_name,
-                            model.alias,
-                            s.id,
-                            job.stance,
-                            job.seed,
-                            job.kind,
-                        ),
+                        "id": eid,
                         "kind": job.kind,
                         "run_name": run_name,
                         "model_alias": model.alias,
@@ -309,9 +435,8 @@ def run_model(
                             result["facts"] if result else {}
                         ),
                         "system_prompt": system_prompt(cfg, s, job.stance),
-                        "turns_json": json.dumps(
-                            result["turns"] if result else []
-                        ),
+                        "turns_json": json.dumps(turns),
+                        "attempts_json": json.dumps(attempts),
                         "status": status,
                         "error": error or None,
                         "turn0_decision": result["turn0_decision"]
@@ -321,7 +446,7 @@ def run_model(
                         if result
                         else None,
                         "break_turn": result["break_turn"] if result else None,
-                        "cost_usd": result["cost_usd"] if result else 0.0,
+                        "cost_usd": cost_usd,
                         "created_at": now_iso(),
                     },
                 )

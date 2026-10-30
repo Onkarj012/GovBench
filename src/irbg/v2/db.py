@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS episodes (
     break_turn INTEGER,
     cost_usd REAL NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    kind TEXT NOT NULL DEFAULT 'pressure'
+    kind TEXT NOT NULL DEFAULT 'pressure',
+    attempts_json TEXT NOT NULL DEFAULT '[]'
 );
 CREATE INDEX IF NOT EXISTS episodes_run ON episodes (run_name, model_alias);
 CREATE TABLE IF NOT EXISTS verdicts (
@@ -76,6 +77,12 @@ def connect_v2(path: Path | None = None) -> sqlite3.Connection:
         conn.execute(
             "ALTER TABLE episodes ADD COLUMN kind TEXT NOT NULL "
             "DEFAULT 'pressure'"
+        )
+        conn.commit()
+    if "attempts_json" not in cols:
+        conn.execute(
+            "ALTER TABLE episodes ADD COLUMN attempts_json TEXT NOT NULL "
+            "DEFAULT '[]'"
         )
         conn.commit()
     return conn
