@@ -117,33 +117,39 @@ def _client_factory_tracker() -> tuple:
 
 def _init_db(db_path: Path) -> None:
     conn = connect(DbConfig(path=db_path))
-    create_tables(conn)
-    conn.close()
+    try:
+        create_tables(conn)
+    finally:
+        conn.close()
 
 
 def _response_rows(db_path: Path, run_id: str) -> list[tuple]:
     conn = connect(DbConfig(path=db_path))
-    rows = conn.execute(
-        """
-        SELECT scenario_id, variant_id, turn_number, mode,
-               system_prompt_sent, user_prompt_sent, raw_response,
-               instance_json
-        FROM responses
-        WHERE run_id = ?
-        """,
-        (run_id,),
-    ).fetchall()
-    conn.close()
+    try:
+        rows = conn.execute(
+            """
+            SELECT scenario_id, variant_id, turn_number, mode,
+                   system_prompt_sent, user_prompt_sent, raw_response,
+                   instance_json
+            FROM responses
+            WHERE run_id = ?
+            """,
+            (run_id,),
+        ).fetchall()
+    finally:
+        conn.close()
     return [tuple(r) for r in rows]
 
 
 def _run_status(db_path: Path, run_id: str) -> str | None:
     conn = connect(DbConfig(path=db_path))
-    row = conn.execute(
-        "SELECT status FROM benchmark_runs WHERE id = ?;",
-        (run_id,),
-    ).fetchone()
-    conn.close()
+    try:
+        row = conn.execute(
+            "SELECT status FROM benchmark_runs WHERE id = ?;",
+            (run_id,),
+        ).fetchone()
+    finally:
+        conn.close()
     return str(row["status"]) if row is not None else None
 
 
@@ -369,21 +375,23 @@ def test_worker_exception_isolated_and_surfaced(tmp_path, monkeypatch) -> None:
 
     # The run is marked failed (worker errors present).
     conn = connect(DbConfig(path=db))
-    run_row = conn.execute(
-        """
-        SELECT id, status
-        FROM benchmark_runs
-        ORDER BY started_at DESC
-        LIMIT 1;
-        """
-    ).fetchone()
-    good_rows = conn.execute(
-        """
-        SELECT scenario_id FROM responses
-        WHERE scenario_id IN ('PLAIN-001');
-        """
-    ).fetchall()
-    conn.close()
+    try:
+        run_row = conn.execute(
+            """
+            SELECT id, status
+            FROM benchmark_runs
+            ORDER BY started_at DESC
+            LIMIT 1;
+            """
+        ).fetchone()
+        good_rows = conn.execute(
+            """
+            SELECT scenario_id FROM responses
+            WHERE scenario_id IN ('PLAIN-001');
+            """
+        ).fetchall()
+    finally:
+        conn.close()
 
     assert run_row is not None
     assert str(run_row["status"]) == "failed"

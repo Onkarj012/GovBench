@@ -623,13 +623,25 @@ def insert_element_verdict(
 
 
 def get_element_pass_matrix(conn: sqlite3.Connection) -> list:
+    """Return identified totals and keep null-identity legacy counts visible.
+
+    Null-identity legacy rows are always reported separately because their
+    response mapping cannot be recovered.
+    """
     rows = conn.execute(
         """
         SELECT
             element_id,
             scenario_id,
-            SUM(present) AS present_count,
-            COUNT(*) AS total_count
+            SUM(CASE WHEN response_id IS NOT NULL THEN present ELSE 0 END)
+                AS present_count,
+            SUM(CASE WHEN response_id IS NOT NULL THEN 1 ELSE 0 END)
+                AS total_count,
+            SUM(CASE
+                WHEN response_id IS NULL AND present = 1 THEN 1 ELSE 0
+            END) AS legacy_present_count,
+            SUM(CASE WHEN response_id IS NULL THEN 1 ELSE 0 END)
+                AS legacy_total_count
         FROM element_verdicts
         GROUP BY element_id, scenario_id
         ORDER BY element_id, scenario_id;

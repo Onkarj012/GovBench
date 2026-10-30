@@ -490,9 +490,17 @@ def _element_content_hash(
     pillar: str,
     element_id: str,
     response: str,
+    *,
+    description: str = "",
+    polarity: str = "",
 ) -> str:
-    """Per-element cache key, isolated from the scenario-level hash."""
-    payload = f"{pillar}:{element_id}:{response}"
+    """Hash the judge prompt meaning so changed rubrics get fresh votes."""
+    prompt = _build_element_presence_prompt(description, response)
+    payload = json.dumps(
+        ["element-presence-v1", pillar, element_id, polarity, prompt],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -529,7 +537,11 @@ def verify_element_with_judge(
     try:
         for alias, _family in judges:
             content_hash = _element_content_hash(
-                pillar, element.id, response_text
+                pillar,
+                element.id,
+                response_text,
+                description=element.desc,
+                polarity=getattr(element, "polarity", ""),
             )
             # Check cache first
             cached = None
