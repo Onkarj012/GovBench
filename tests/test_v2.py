@@ -191,6 +191,178 @@ def test_failed_episode_saves_partial_turns_and_retry_keeps_spend(tmp_path):
     assert retried["cost_usd"] == pytest.approx(0.8)
 
 
+def test_openrouter_empty_retry_records_paid_response_and_checks_cap(
+    tmp_path, monkeypatch
+):
+    from irbg.engine.types import ProviderResponse
+    from irbg.v2.backends import OpenRouterSession
+    from irbg.v2.db import run_cost
+
+    scenario = load_v2_scenario(_write(tmp_path, _raw()))
+
+    class Client:
+        calls = 0
+
+        def chat_messages(self, **_kwargs):
+            self.calls += 1
+            return ProviderResponse(
+                success=True,
+                model_id="fake/1",
+                text="" if self.calls == 1 else "DECISION: award_a",
+                input_tokens=10,
+                output_tokens=0 if self.calls == 1 else 2,
+                total_tokens=10 if self.calls == 1 else 12,
+                latency_ms=1,
+                cost_usd=0.6 if self.calls == 1 else 0.5,
+            )
+
+    client = Client()
+    conn = connect_v2(tmp_path / "empty-response.sqlite")
+    try:
+        cfg = _cfg()
+        model = cfg.models["fake"]
+        monkeypatch.setattr("irbg.v2.backends.RETRY_BACKOFF_S", (0,))
+        run_model(
+            conn=conn,
+            cfg=cfg,
+            model=model,
+            scenarios=[scenario],
+            run_name="empty",
+            stances=("decision_maker",),
+            max_usd=0.5,
+            factory=lambda _model, system: OpenRouterSession(
+                client, "fake/1", system, 100, 0, 1, 1
+            ),
+            log=lambda _message: None,
+        )
+        episode = conn.execute("SELECT * FROM episodes").fetchone()
+        assert client.calls == 1
+        assert episode["status"] == "skipped_cap"
+        assert json.loads(episode["turns_json"]) == []
+        calls = json.loads(episode["attempts_json"])[0]["calls"]
+        assert calls[0]["cost_usd"] == 0.6
+        assert run_cost(conn, "empty") == pytest.approx(0.6)
+    finally:
+        conn.close()
+
+
+def _overlapping_run(db_path, scenario_path, started, completed, late_error):
+    """Run one process in the duplicate-run regression."""
+    import time
+
+    conn = connect_v2(db_path)
+    try:
+        scenario = load_v2_scenario(scenario_path)
+        cfg = _cfg()
+
+        class Session:
+            calls = 0
+
+            def send(self, _prompt):
+                self.calls += 1
+                if late_error:
+                    assert completed.wait(10)
+                    raise BackendError("late provider failure")
+                if self.calls == 1:
+                    started.set()
+                    time.sleep(0.4)
+                return TurnReply("DECISION: award_a", 1)
+
+            def close(self):
+                pass
+
+        def factory(_model, _system):
+            return Session()
+
+        run_model(
+            conn=conn,
+            cfg=cfg,
+            model=cfg.models["fake"],
+            scenarios=[scenario],
+            run_name="overlap",
+            stances=("decision_maker",),
+            factory=factory,
+            log=lambda _message: None,
+        )
+        if not late_error:
+            completed.set()
+    finally:
+        conn.close()
+
+
+def test_overlapping_processes_keep_completion_and_clear_stale_votes(tmp_path):
+    import multiprocessing
+
+    from irbg.v2.db import save_episode
+
+    scenario_path = _write(tmp_path, _raw())
+    db_path = tmp_path / "overlap.sqlite"
+    context = multiprocessing.get_context("spawn")
+    started = context.Event()
+    completed = context.Event()
+    first = context.Process(
+        target=_overlapping_run,
+        args=(db_path, scenario_path, started, completed, False),
+    )
+    first.start()
+    assert started.wait(5)
+    second = context.Process(
+        target=_overlapping_run,
+        args=(db_path, scenario_path, started, completed, True),
+    )
+    second.start()
+    first.join(10)
+    second.join(10)
+    assert first.exitcode == 0
+    assert second.exitcode == 0
+
+    conn = connect_v2(db_path)
+    try:
+        episode = conn.execute("SELECT * FROM episodes").fetchone()
+        assert episode["status"] == "complete"
+        assert json.loads(episode["turns_json"])[0]["decision"] == "award_a"
+
+        stale = _verdict(acknowledged_pressure=True)
+        conn.execute(
+            "INSERT INTO verdicts VALUES (?, 'j1', ?, ?, 'now')",
+            (episode["id"], PROMPT_HASH, json.dumps(stale)),
+        )
+        conn.commit()
+        replacement = dict(episode)
+        replacement["status"] = "error"
+        replacement["turns_json"] = "[]"
+        replacement["attempts_json"] = "[]"
+        save_episode(conn, replacement)
+        current = conn.execute(
+            "SELECT status, turns_json FROM episodes WHERE id = ?",
+            (episode["id"],),
+        ).fetchone()
+        votes = conn.execute(
+            "SELECT COUNT(*) FROM verdicts WHERE episode_id = ?",
+            (episode["id"],),
+        ).fetchone()[0]
+        assert current["status"] == "complete"
+        assert votes == 1
+
+        conn.execute(
+            "UPDATE episodes SET status = 'error' WHERE id = ?",
+            (episode["id"],),
+        )
+        changed = dict(episode)
+        changed["status"] = "complete"
+        changed["turns_json"] = "[]"
+        save_episode(conn, changed)
+        assert (
+            conn.execute(
+                "SELECT COUNT(*) FROM verdicts WHERE episode_id = ?",
+                (episode["id"],),
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        conn.close()
+
+
 def test_manifest_requires_scenario_and_model_identity(tmp_path, scenario):
     from irbg.v2.runner import validate_run_identity
 

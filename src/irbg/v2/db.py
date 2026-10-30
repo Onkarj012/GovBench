@@ -161,7 +161,18 @@ def record_budget_charge(
 
 
 def save_episode(conn: sqlite3.Connection, row: dict) -> None:
-    """Insert or replace one episode row."""
+    """Preserve completed episodes and invalidate stale judge results."""
+    previous = conn.execute(
+        "SELECT status, turns_json FROM episodes WHERE id = ?",
+        (row["id"],),
+    ).fetchone()
+    if previous and previous["status"] == "complete":
+        return
+    if previous and previous["turns_json"] != row["turns_json"]:
+        conn.execute("DELETE FROM verdicts WHERE episode_id = ?", (row["id"],))
+        conn.execute(
+            "DELETE FROM classifications WHERE episode_id = ?", (row["id"],)
+        )
     charge_total = conn.execute(
         "SELECT COALESCE(SUM(cost_usd), 0) FROM budget_charges "
         "WHERE episode_id = ?",
@@ -171,8 +182,11 @@ def save_episode(conn: sqlite3.Connection, row: dict) -> None:
         row = {**row, "cost_usd": float(charge_total)}
     cols = ", ".join(row)
     marks = ", ".join("?" for _ in row)
+    updates = ", ".join(f"{col} = excluded.{col}" for col in row if col != "id")
     conn.execute(
-        f"INSERT OR REPLACE INTO episodes ({cols}) VALUES ({marks})",
+        f"INSERT INTO episodes ({cols}) VALUES ({marks}) "
+        f"ON CONFLICT(id) DO UPDATE SET {updates} "
+        "WHERE episodes.status != 'complete'",
         tuple(row.values()),
     )
     conn.commit()

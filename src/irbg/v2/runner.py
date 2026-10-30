@@ -207,6 +207,18 @@ def _budget_lock(path: Path):
             fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
+@contextmanager
+def _model_lock(path: Path):
+    """Serialize one run and model across local processes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+
 def default_session_factory() -> SessionFactory:
     """Session factory that shares one OpenRouter client across threads."""
     client_box: dict[str, object] = {}
@@ -387,6 +399,40 @@ def run_model(
     factory: SessionFactory | None = None,
     log: Callable[[str], None] = print,
 ) -> dict[str, int]:
+    """Run pending episodes after acquiring the run/model process lock."""
+    db_path = Path(conn.execute("PRAGMA database_list").fetchone()[2])
+    identity = hashlib.sha256(f"{run_name}|{model.alias}".encode()).hexdigest()[
+        :16
+    ]
+    lock_path = db_path.with_name(f".{db_path.name}.{identity}.run.lock")
+    with _model_lock(lock_path):
+        return _run_model_locked(
+            conn=conn,
+            cfg=cfg,
+            model=model,
+            scenarios=scenarios,
+            run_name=run_name,
+            seeds=seeds,
+            stances=stances,
+            max_usd=max_usd,
+            factory=factory,
+            log=log,
+        )
+
+
+def _run_model_locked(
+    *,
+    conn,
+    cfg: V2Config,
+    model: V2Model,
+    scenarios: list[ScenarioV2],
+    run_name: str,
+    seeds: int | None = None,
+    stances: tuple[str, ...] = STANCES,
+    max_usd: float = 10.0,
+    factory: SessionFactory | None = None,
+    log: Callable[[str], None] = print,
+) -> dict[str, int]:
     """Run all pending episodes for one model; resumable and cost-capped."""
     make = factory or default_session_factory()
     done = completed_keys(conn, run_name)
@@ -407,16 +453,62 @@ def run_model(
     spend = {"usd": run_cost(conn, run_name)}
     db_path = Path(conn.execute("PRAGMA database_list").fetchone()[2])
     lock_name = hashlib.sha256(run_name.encode()).hexdigest()[:16]
-    lock_path = db_path.with_name(f".{db_path.name}.{lock_name}.budget.lock")
+    budget_lock_path = db_path.with_name(
+        f".{db_path.name}.{lock_name}.budget.lock"
+    )
 
     def work(job: EpisodeJob) -> tuple[EpisodeJob, str, dict | None, str]:
         system = system_prompt(cfg, job.scenario, job.stance)
         session = make(model, system)
+        call_evidence: list[dict] = []
 
         def send(index: int, prompt: str):
-            with _budget_lock(lock_path):
+            with _budget_lock(budget_lock_path):
                 budget_conn = connect_v2(db_path)
                 try:
+
+                    def before_request() -> None:
+                        current = run_cost(budget_conn, run_name)
+                        if current >= max_usd:
+                            spend["usd"] = current
+                            raise BudgetCapReached("--max-usd reached")
+
+                    def on_response(reply: TurnReply) -> None:
+                        call_evidence.append(
+                            {
+                                "turn_index": index,
+                                "text": reply.text,
+                                "latency_ms": reply.latency_ms,
+                                "input_tokens": reply.input_tokens,
+                                "output_tokens": reply.output_tokens,
+                                "cost_usd": reply.cost_usd,
+                                "empty": not reply.text.strip(),
+                            }
+                        )
+                        if reply.cost_usd is not None:
+                            episode_id = episode_key(
+                                run_name,
+                                model.alias,
+                                job.scenario.id,
+                                job.stance,
+                                job.seed,
+                                job.kind,
+                            )
+                            record_budget_charge(
+                                budget_conn,
+                                uuid.uuid4().hex,
+                                episode_id,
+                                run_name,
+                                reply.cost_usd,
+                            )
+                            spend["usd"] = run_cost(budget_conn, run_name)
+
+                    if isinstance(session, OpenRouterSession):
+                        return session.send(
+                            prompt,
+                            before_request=before_request,
+                            on_response=on_response,
+                        )
                     current = run_cost(budget_conn, run_name)
                     if current >= max_usd:
                         spend["usd"] = current
@@ -457,9 +549,12 @@ def run_model(
             if isinstance(exc, BudgetCapReached):
                 result = exc.result
                 status = "skipped_cap"
+            if result is not None:
+                result["calls"] = call_evidence
             return job, status, result, str(exc)
         finally:
             session.close()
+        result["calls"] = call_evidence
         return job, "complete", result, ""
 
     with ThreadPoolExecutor(max_workers=max(1, model.workers)) as ex:
@@ -468,7 +563,9 @@ def run_model(
             job, status, result, error = fut.result()
             counts[status] += 1
             if status == "skipped_cap" and (
-                result is None or not result["turns"]
+                result is None
+                or not result["turns"]
+                and not result.get("calls")
             ):
                 continue
             s = job.scenario
@@ -497,7 +594,17 @@ def run_model(
                 attempts.append(
                     {
                         "turns": turns,
-                        "cost_usd": result["cost_usd"] if result else 0.0,
+                        "calls": result.get("calls", []) if result else [],
+                        "cost_usd": (
+                            sum(
+                                call["cost_usd"] or 0.0
+                                for call in result["calls"]
+                            )
+                            if result and result.get("calls")
+                            else result["cost_usd"]
+                            if result
+                            else 0.0
+                        ),
                         "error": error or None,
                     }
                 )

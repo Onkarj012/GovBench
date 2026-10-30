@@ -6,12 +6,13 @@ import shutil
 import subprocess
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
 from irbg.engine.provider import OpenRouterClient
-from irbg.engine.types import ChatMessage
+from irbg.engine.types import ChatMessage, ProviderResponse
 
 CLAUDE_BIN = shutil.which("claude", path="/opt/homebrew/bin") or "claude"
 CODEX_BIN = shutil.which("codex") or "codex"
@@ -84,36 +85,66 @@ class OpenRouterSession:
     def __post_init__(self) -> None:
         self.messages = [ChatMessage(role="system", content=self.system)]
 
-    def send(self, user_text: str) -> TurnReply:
+    def send(
+        self,
+        user_text: str,
+        *,
+        before_request: Callable[[], None] | None = None,
+        on_response: Callable[[TurnReply], None] | None = None,
+    ) -> TurnReply:
         """Send the full message history plus one user turn."""
         self.messages.append(ChatMessage(role="user", content=user_text))
 
-        def call() -> TurnReply:
-            r = self.client.chat_messages(
-                model_id=self.model_id,
-                messages=self.messages,
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
-            if not r.success or not r.text.strip():
-                raise BackendError(r.error or "empty response")
-            cost = r.cost_usd
-            if cost is None:
-                cost = (
-                    r.input_tokens * self.price_input
-                    + r.output_tokens * self.price_output
-                ) / 1_000_000
-            return TurnReply(
-                text=r.text,
-                latency_ms=r.latency_ms,
-                input_tokens=r.input_tokens,
-                output_tokens=r.output_tokens,
-                cost_usd=cost,
-            )
+        last: Exception | None = None
+        for wait in (0, *RETRY_BACKOFF_S):
+            if before_request:
+                before_request()
+            if wait:
+                time.sleep(wait)
+            try:
+                response = self.client.chat_messages(
+                    model_id=self.model_id,
+                    messages=self.messages,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+            except (BackendError, subprocess.TimeoutExpired, OSError) as exc:
+                last = exc
+                if "usage limit" in str(exc).lower():
+                    break
+                continue
 
-        reply = _with_retries(call, f"openrouter {self.model_id}")
-        self.messages.append(ChatMessage(role="assistant", content=reply.text))
-        return reply
+            reply = self._reply(response)
+            if on_response:
+                on_response(reply)
+            if not response.success or not response.text.strip():
+                last = BackendError(response.error or "empty response")
+                if "usage limit" in str(last).lower():
+                    break
+                continue
+            self.messages.append(
+                ChatMessage(role="assistant", content=reply.text)
+            )
+            return reply
+        raise BackendError(
+            f"openrouter {self.model_id} failed after retries: {last}"
+        )
+
+    def _reply(self, response: ProviderResponse) -> TurnReply:
+        """Convert a provider response and retain its cost."""
+        cost = response.cost_usd
+        if cost is None:
+            cost = (
+                response.input_tokens * self.price_input
+                + response.output_tokens * self.price_output
+            ) / 1_000_000
+        return TurnReply(
+            text=response.text,
+            latency_ms=response.latency_ms,
+            input_tokens=response.input_tokens,
+            output_tokens=response.output_tokens,
+            cost_usd=cost,
+        )
 
     def close(self) -> None:
         """Nothing to release; the client is shared."""
