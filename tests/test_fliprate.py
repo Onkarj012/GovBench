@@ -139,18 +139,19 @@ def _make_row(
     pillar: str = "p1_demographic_consistency",
 ) -> sqlite3.Row:
     """Build a sqlite3.Row-like object for pairing tests."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        "CREATE TABLE t (scenario_id, variant_id, instance_json, "
-        "raw_response, pillar)"
-    )
-    conn.execute(
-        "INSERT INTO t VALUES (?, ?, ?, ?, ?)",
-        (scenario_id, variant_id, instance_json, raw_response, pillar),
-    )
-    row = conn.execute("SELECT * FROM t").fetchone()
-    conn.close()
+    conn = connect(DbConfig(path=Path(":memory:")))
+    try:
+        conn.execute(
+            "CREATE TABLE t (scenario_id, variant_id, instance_json, "
+            "raw_response, pillar)"
+        )
+        conn.execute(
+            "INSERT INTO t VALUES (?, ?, ?, ?, ?)",
+            (scenario_id, variant_id, instance_json, raw_response, pillar),
+        )
+        row = conn.execute("SELECT * FROM t").fetchone()
+    finally:
+        conn.close()
     return row
 
 
