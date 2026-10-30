@@ -17,6 +17,10 @@ from irbg.analysis.aggregate import (
 )
 from irbg.analysis.compare import compare_runs
 from irbg.analysis.export import write_leaderboard
+from irbg.analysis.fliprate import (
+    FlipRateError,
+    compute_flip_rate_for_run,
+)
 from irbg.analysis.quality import (
     DEFAULT_INVALID_THRESHOLD,
     assess_all_runs,
@@ -33,10 +37,20 @@ from irbg.analysis.visualize import (
     generate_run_summary_chart,
 )
 from irbg.config import ConfigError, load_models_config
-from irbg.db.operations import DbConfig, connect, list_benchmark_runs
+from irbg.db.operations import (
+    DbConfig,
+    connect,
+    list_benchmark_runs,
+)
 from irbg.db.schema import create_tables
 from irbg.demographics import DemographicsError, get_variant_group
-from irbg.engine.prompt_builder import PromptBuildError
+from irbg.engine.fact_generator import (
+    FactGenerationError,
+    parse_fact_space,
+    sample_instance,
+    seed_for,
+)
+from irbg.engine.prompt_builder import PromptBuildError, render_prompt
 from irbg.engine.provider import OpenRouterClient
 from irbg.engine.runner import (
     run_all_template_variants,
@@ -48,6 +62,7 @@ from irbg.engine.variant_generator import (
     VariantGenerationError,
     generate_single_prompt_for_variant,
 )
+from irbg.paths import DEFAULT_DB_PATH
 from irbg.scenarios.discovery import ScenarioDiscoveryError
 from irbg.scenarios.template_loader import (
     ScenarioTemplateLoadError,
@@ -81,7 +96,7 @@ def _ensure_database(db_path: Path) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def init_db(db_path: Path) -> None:
@@ -119,7 +134,7 @@ def list_models() -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def list_runs(db_path: Path) -> None:
@@ -152,11 +167,36 @@ def list_runs(db_path: Path) -> None:
     console.print(table)
 
 
+@main.command("mark-stale-runs")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    show_default=True,
+)
+def mark_stale_runs(db_path: Path) -> None:
+    """Mark runs stuck in 'running' status as failed."""
+    _ensure_database(db_path)
+
+    conn = connect(DbConfig(path=db_path))
+    try:
+        cursor = conn.execute(
+            "UPDATE benchmark_runs SET status = 'failed' "
+            "WHERE status = 'running';"
+        )
+        conn.commit()
+        changed = cursor.rowcount
+    finally:
+        conn.close()
+
+    console.print(f"[green]OK[/green] Marked {changed} stale run(s) as failed.")
+
+
 @main.command("quarantine-check")
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -202,7 +242,7 @@ def quarantine_check_cmd(db_path: Path, threshold: float) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -359,7 +399,7 @@ def render_template(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
@@ -402,7 +442,7 @@ def run_once(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
@@ -446,7 +486,7 @@ def run_template_variant(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
@@ -488,15 +528,30 @@ def run_template_group(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option("--mode", default="baseline", show_default=True)
+@click.option(
+    "--seed",
+    type=int,
+    default=None,
+    help="RNG seed for procedural fact-space sampling.",
+)
+@click.option(
+    "--instances",
+    type=int,
+    default=1,
+    show_default=True,
+    help="Number of instances to sample per procedural template.",
+)
 def run_template_folder_cmd(
     model_alias: str,
     scenario_folder: Path,
     db_path: Path,
     mode: str,
+    seed: int | None,
+    instances: int,
 ) -> None:
     _ensure_database(db_path)
 
@@ -506,6 +561,8 @@ def run_template_folder_cmd(
             folder_path=scenario_folder,
             db_path=db_path,
             mode=mode,
+            seed=seed,
+            n_instances=instances,
         )
     except (
         ConfigError,
@@ -535,7 +592,7 @@ def run_template_folder_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -606,7 +663,7 @@ def score_p1_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -666,7 +723,7 @@ def score_p2_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -726,7 +783,7 @@ def score_p3_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -786,7 +843,7 @@ def score_p4_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -846,7 +903,7 @@ def score_p5_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -906,7 +963,7 @@ def score_p6_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def aggregate_run_cmd(
@@ -940,7 +997,7 @@ def aggregate_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -995,7 +1052,7 @@ def calibrate_judge_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def show_run_cmd(
@@ -1047,7 +1104,7 @@ def show_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(
@@ -1107,7 +1164,7 @@ def report_run_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def compare_runs_cmd(
@@ -1149,6 +1206,192 @@ def compare_runs_cmd(
         else "N/A"
     )
     console.print(f"Score delta (left - right): {delta_text}")
+
+
+@main.command("generate")
+@click.option("--pillar", required=True)
+@click.option("--instances", default=5, show_default=True, type=int)
+@click.option("--seed", default=42, show_default=True, type=int)
+@click.option(
+    "--split",
+    type=click.Choice(["public", "holdout", "all"]),
+    default="public",
+    show_default=True,
+)
+@click.option("--out", type=click.Path(path_type=Path), default=None)
+@click.option(
+    "--scenarios-dir",
+    type=click.Path(path_type=Path),
+    default=Path("./scenarios"),
+    show_default=True,
+)
+def generate_cmd(
+    pillar: str,
+    instances: int,
+    seed: int,
+    split: str,
+    out: Path | None,
+    scenarios_dir: Path,
+) -> None:
+    """Sample fact-space instances and render prompts for a pillar."""
+    dirs: list[Path] = []
+    if split in ("public", "all"):
+        dirs.append(scenarios_dir / "v1" / pillar)
+    if split in ("holdout", "all"):
+        dirs.append(scenarios_dir / "holdout" / pillar)
+
+    rows: list[dict] = []
+
+    for scan_dir in dirs:
+        if not scan_dir.is_dir():
+            raise click.ClickException(f"Split directory not found: {scan_dir}")
+        json_files = sorted(scan_dir.glob("*.json"))
+        if not json_files:
+            raise click.ClickException(
+                f"No scenario files found in split directory: {scan_dir}"
+            )
+        for json_file in json_files:
+            try:
+                template = load_scenario_template(json_file)
+            except ScenarioTemplateLoadError as exc:
+                console.print(f"[yellow]Skip {json_file.name}:[/yellow] {exc}")
+                continue
+
+            if template.fact_space:
+                try:
+                    fs = parse_fact_space(template.fact_space)
+                except FactGenerationError as exc:
+                    console.print(
+                        f"[yellow]Skip {json_file.name}:[/yellow] {exc}"
+                    )
+                    continue
+
+                tmpl_seed = seed_for(template.id, seed)
+                rng = __import__("random").Random(tmpl_seed)
+
+                for i in range(instances):
+                    try:
+                        inst = sample_instance(fs, rng=rng, draw_index=i)
+                    except FactGenerationError as exc:
+                        console.print(
+                            f"[yellow]Instance {i} skip:[/yellow] {exc}"
+                        )
+                        break
+
+                    try:
+                        rendered = render_prompt(
+                            template,
+                            variables=inst,
+                            mode="baseline",
+                            variant_id=f"inst{i}",
+                        )
+                    except PromptBuildError as exc:
+                        console.print(
+                            f"[yellow]Render {i} skip:[/yellow] {exc}"
+                        )
+                        continue
+
+                    rows.append(
+                        {
+                            "scenario_id": template.id,
+                            "instance_index": i,
+                            "seed": tmpl_seed,
+                            "variables": inst,
+                            "user_prompt": rendered.user_prompt,
+                            "system_prompt": rendered.system_prompt,
+                        }
+                    )
+            else:
+                try:
+                    rendered = render_prompt(
+                        template,
+                        variables={},
+                        mode="baseline",
+                    )
+                except PromptBuildError as exc:
+                    console.print(f"[yellow]Render skip:[/yellow] {exc}")
+                    continue
+
+                rows.append(
+                    {
+                        "scenario_id": template.id,
+                        "instance_index": 0,
+                        "seed": seed,
+                        "variables": {},
+                        "user_prompt": rendered.user_prompt,
+                        "system_prompt": rendered.system_prompt,
+                    }
+                )
+
+    table = Table(title=f"Generated prompts — {pillar}")
+    table.add_column("scenario_id")
+    table.add_column("instance_index", justify="right")
+    table.add_column("user_prompt[:60]")
+
+    for row in rows:
+        table.add_row(
+            row["scenario_id"],
+            str(row["instance_index"]),
+            row["user_prompt"][:60],
+        )
+
+    console.print(table)
+
+    if out is not None:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        lines = "\n".join(json.dumps(r) for r in rows)
+        out.write_text(lines + ("\n" if lines else ""))
+        console.print(f"[green]OK[/green] Wrote {len(rows)} record(s) to {out}")
+
+
+@main.command("explain-score")
+@click.argument("run_id")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    show_default=True,
+)
+def explain_score_cmd(run_id: str, db_path: Path) -> None:
+    """Show element verdicts for a run as a detailed audit table."""
+    _ensure_database(db_path)
+
+    conn = connect(DbConfig(path=db_path))
+    try:
+        rows = conn.execute(
+            """
+            SELECT scenario_id, element_id, present, evidence
+            FROM element_verdicts
+            WHERE run_id = ?
+            ORDER BY scenario_id, element_id;
+            """,
+            (run_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    table = Table(title=f"Element Verdicts — {run_id[:12]}…")
+    table.add_column("Scenario ID")
+    table.add_column("Element ID")
+    table.add_column("Present")
+    table.add_column("Evidence")
+
+    for row in rows:
+        present_str = (
+            "[green]yes[/green]" if row["present"] else "[red]no[/red]"
+        )
+        table.add_row(
+            str(row["scenario_id"]),
+            str(row["element_id"]),
+            present_str,
+            str(row["evidence"] or "-"),
+        )
+
+    console.print(table)
+    if not rows:
+        console.print(
+            f"[yellow]No element verdicts found for run {run_id}.[/yellow]"
+        )
 
 
 if __name__ == "__main__":
@@ -1214,7 +1457,7 @@ def canary_check_cmd(scenario_folder: Path) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def compute_ci_cmd(model_alias: str, mode: str, db_path: Path) -> None:
@@ -1264,7 +1507,7 @@ def compute_ci_cmd(model_alias: str, mode: str, db_path: Path) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def robustness_delta_cmd(model_alias: str, mode: str, db_path: Path) -> None:
@@ -1305,7 +1548,7 @@ def robustness_delta_cmd(model_alias: str, mode: str, db_path: Path) -> None:
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def compare_models_cmd(
@@ -1359,7 +1602,7 @@ def compare_models_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 def verify_coverage_cmd(
@@ -1441,6 +1684,49 @@ def verify_coverage_cmd(
         console.print("[green]Full matrix covered.[/green]")
 
 
+@main.command("flip-rate")
+@click.argument("run_id")
+@click.option(
+    "--db-path",
+    type=click.Path(path_type=Path),
+    default=DEFAULT_DB_PATH,
+    show_default=True,
+)
+def flip_rate_cmd(run_id: str, db_path: Path) -> None:
+    """Compute judge-free flip-rate metric for a run."""
+    _ensure_database(db_path)
+
+    try:
+        report = compute_flip_rate_for_run(db_path=db_path, run_id=run_id)
+    except FlipRateError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    table = Table(title=f"Flip Rate — {run_id[:12]}…")
+    table.add_column("Pillar")
+    table.add_column("Pairs", justify="right")
+    table.add_column("Decided", justify="right")
+    table.add_column("Flips", justify="right")
+    table.add_column("Flip Rate", justify="right")
+    table.add_column("95% CI", justify="right")
+
+    for pillar, result in report.pillars:
+        ci_text = (
+            f"[{result.ci_low:.4f}, {result.ci_high:.4f}]"
+            if result.n_decided > 0
+            else "N/A"
+        )
+        table.add_row(
+            pillar,
+            str(result.n_pairs),
+            str(result.n_decided),
+            str(result.n_flips),
+            f"{result.flip_rate:.4f}",
+            ci_text,
+        )
+
+    console.print(table)
+
+
 @main.command("run-full-suite")
 @click.option("--model", "model_alias", required=True)
 @click.option(
@@ -1452,7 +1738,7 @@ def verify_coverage_cmd(
 @click.option(
     "--db-path",
     type=click.Path(path_type=Path),
-    default=Path("./irbg.sqlite"),
+    default=DEFAULT_DB_PATH,
     show_default=True,
 )
 @click.option(

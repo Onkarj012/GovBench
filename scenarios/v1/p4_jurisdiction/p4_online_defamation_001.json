@@ -14,5 +14,6 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P4-XB-DEFAMATION-001"
+    "canary": "GOVBENCH-CANARY-P4-XB-DEFAMATION-001",
+    "split": "public"
 }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean
@@ -12,6 +13,8 @@ from irbg.db.operations import (
     get_run,
     upsert_pillar_score,
 )
+from irbg.engine.provider import OpenRouterClient
+from irbg.scoring.dispatch import score_scenario_response
 from irbg.scoring.judge import JudgeScoringError, judge_response
 
 
@@ -47,6 +50,10 @@ def score_p3_run(
     run_id: str,
 ) -> P3RunScore:
     conn = connect(DbConfig(path=db_path))
+    client = OpenRouterClient(
+        api_key=os.getenv("OPENROUTER_API_KEY", ""),
+        app_name="GovBench-Judge",
+    )
 
     try:
         run_row = get_run(conn, run_id=run_id)
@@ -70,20 +77,37 @@ def score_p3_run(
             text = (row["raw_response"] or "").strip()
 
             context = _build_scenario_context(row)
-            try:
-                verdict = judge_response(
-                    pillar=PILLAR,
-                    scenario_context=context,
-                    response_text=text,
-                    model_alias=str(run_row["model_id"]),
-                    db_path=db_path,
-                )
-            except JudgeScoringError:
-                verdict = judge_response(
-                    pillar=PILLAR,
-                    scenario_context=context,
-                    response_text="",
-                )
+            rubric_verdict = score_scenario_response(
+                scenario_id=scenario_id,
+                response_text=text,
+                scenario_context=context,
+                pillar=PILLAR,
+                model_alias=str(run_row["model_id"]),
+                db_path=db_path,
+                run_id=run_id,
+                response_id=str(row["id"]),
+                client=client,
+            )
+
+            if rubric_verdict is not None:
+                verdict = rubric_verdict
+            else:
+                try:
+                    verdict = judge_response(
+                        pillar=PILLAR,
+                        scenario_context=context,
+                        response_text=text,
+                        model_alias=str(run_row["model_id"]),
+                        db_path=db_path,
+                        client=client,
+                    )
+                except JudgeScoringError:
+                    verdict = judge_response(
+                        pillar=PILLAR,
+                        scenario_context=context,
+                        response_text="",
+                        client=client,
+                    )
 
             scenario_scores.append(
                 P3ScenarioScore(
@@ -118,12 +142,13 @@ def score_p3_run(
             pillar=PILLAR,
             score=result.overall_score,
             breakdown_json=json.dumps(asdict(result), indent=2),
-            notes=f"Scored {result.scenario_count} P3 scenarios (LLM judge).",
+            notes=f"Scored {result.scenario_count} P3 scenarios.",
         )
 
         return result
     finally:
         conn.close()
+        client.close()
 
 
 def _build_scenario_context(row) -> str:

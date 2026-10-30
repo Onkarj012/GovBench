@@ -20,5 +20,6 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P1-IN-WELFARE-001"
+    "canary": "GOVBENCH-CANARY-P1-IN-WELFARE-001",
+    "split": "public"
 }

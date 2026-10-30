@@ -29,6 +29,9 @@ class ScenarioTemplate:
     adversarial_turns: list[AdversarialTurn] = field(default_factory=list)
     version: str = "v1"
     canary: str = ""
+    fact_space: dict | None = None
+    split: str = "public"
+    rubric: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -43,3 +46,4 @@ class RenderedPrompt:
     variables: dict[str, object]
     system_prompt: str
     user_prompt: str
+    instance_vars: dict | None = None

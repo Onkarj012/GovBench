@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from irbg.db.schema import _migrate_responses, _migrate_run_manifests
 from irbg.scenarios.models import Scenario
 
 
@@ -192,7 +193,9 @@ def insert_response(
     cost_usd: float | None = None,
     finish_reason: str | None = None,
     reasoning_text: str | None = None,
+    instance_json: str | None = None,
 ) -> str:
+    _migrate_responses(conn)
     response_id = new_id()
 
     conn.execute(
@@ -216,11 +219,12 @@ def insert_response(
             cost_usd,
             finish_reason,
             reasoning_text,
+            instance_json,
             latency_ms,
             created_at
         )
         VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         );
         """,
         (
@@ -242,6 +246,7 @@ def insert_response(
             cost_usd,
             finish_reason,
             reasoning_text,
+            instance_json,
             latency_ms,
             now_utc_iso(),
         ),
@@ -545,13 +550,17 @@ def upsert_run_manifest(
     scenario_set_hash: str,
     seed: int | None,
     timestamp: str,
+    generator_hash: str | None = None,
+    n_instances: int | None = None,
 ) -> None:
+    _migrate_run_manifests(conn)
     conn.execute(
         """
         INSERT OR REPLACE INTO run_manifests (
             run_id, model_alias, model_snapshot_json,
-            scenario_set_version, scenario_set_hash, seed, timestamp
-        ) VALUES (?, ?, ?, ?, ?, ?, ?);
+            scenario_set_version, scenario_set_hash, seed,
+            generator_hash, n_instances, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
         """,
         (
             run_id,
@@ -560,10 +569,85 @@ def upsert_run_manifest(
             scenario_set_version,
             scenario_set_hash,
             seed,
+            generator_hash,
+            n_instances,
             timestamp,
         ),
     )
     conn.commit()
+
+
+def insert_element_verdict(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    scenario_id: str,
+    response_id: str | None = None,
+    element_id: str,
+    present: bool,
+    evidence: str,
+    created_at: str,
+) -> str:
+    verdict_id = new_id()
+    conn.execute(
+        """
+        INSERT INTO element_verdicts (
+            id,
+            run_id,
+            scenario_id,
+            response_id,
+            element_id,
+            present,
+            evidence,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(response_id, element_id) WHERE response_id IS NOT NULL
+        DO UPDATE SET present = excluded.present,
+                      evidence = excluded.evidence,
+                      created_at = excluded.created_at;
+        """,
+        (
+            verdict_id,
+            run_id,
+            scenario_id,
+            response_id,
+            element_id,
+            1 if present else 0,
+            evidence,
+            created_at,
+        ),
+    )
+    conn.commit()
+    return verdict_id
+
+
+def get_element_pass_matrix(conn: sqlite3.Connection) -> list:
+    """Return identified totals and keep null-identity legacy counts visible.
+
+    Null-identity legacy rows are always reported separately because their
+    response mapping cannot be recovered.
+    """
+    rows = conn.execute(
+        """
+        SELECT
+            element_id,
+            scenario_id,
+            SUM(CASE WHEN response_id IS NOT NULL THEN present ELSE 0 END)
+                AS present_count,
+            SUM(CASE WHEN response_id IS NOT NULL THEN 1 ELSE 0 END)
+                AS total_count,
+            SUM(CASE
+                WHEN response_id IS NULL AND present = 1 THEN 1 ELSE 0
+            END) AS legacy_present_count,
+            SUM(CASE WHEN response_id IS NULL THEN 1 ELSE 0 END)
+                AS legacy_total_count
+        FROM element_verdicts
+        GROUP BY element_id, scenario_id
+        ORDER BY element_id, scenario_id;
+        """
+    ).fetchall()
+    return list(rows)
 
 
 def get_run_manifest(
@@ -612,3 +696,32 @@ def upsert_judge_result(
         ),
     )
     conn.commit()
+
+
+def get_responses_for_flip_rate(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+) -> list[sqlite3.Row]:
+    """Return response rows with scenario pillar for flip-rate pairing.
+
+    Rows contain ``scenario_id``, ``variant_id``, ``instance_json``,
+    ``raw_response``, and ``pillar`` so callers can pair demographically
+    perturbed variants of the same procedural instance.
+    """
+    rows = conn.execute(
+        """
+        SELECT
+            r.scenario_id,
+            r.variant_id,
+            r.instance_json,
+            r.raw_response,
+            s.pillar
+        FROM responses r
+        JOIN scenarios s ON r.scenario_id = s.id
+        WHERE r.run_id = ?
+        ORDER BY r.scenario_id, r.variant_id;
+        """,
+        (run_id,),
+    ).fetchall()
+    return list(rows)

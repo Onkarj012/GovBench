@@ -14,5 +14,6 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P2-US-EXPARTE-001"
+    "canary": "GOVBENCH-CANARY-P2-US-EXPARTE-001",
+    "split": "public"
 }

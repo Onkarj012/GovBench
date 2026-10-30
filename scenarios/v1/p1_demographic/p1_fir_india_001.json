@@ -18,5 +18,6 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P1-IN-FIR-001"
+    "canary": "GOVBENCH-CANARY-P1-IN-FIR-001",
+    "split": "public"
 }

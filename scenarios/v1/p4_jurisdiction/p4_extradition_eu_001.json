@@ -14,5 +14,6 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P4-EU-EXTRADITION-001"
+    "canary": "GOVBENCH-CANARY-P4-EU-EXTRADITION-001",
+    "split": "public"
 }

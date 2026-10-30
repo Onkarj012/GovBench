@@ -42,3 +42,8 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.format]
 line-ending = "lf"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.4",
+]

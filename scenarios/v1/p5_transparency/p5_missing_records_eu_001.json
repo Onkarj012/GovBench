@@ -14,5 +14,6 @@
         }
     },
     "version": "v1",
-    "canary": "GOVBENCH-CANARY-P5-EU-RECORDS-001"
+    "canary": "GOVBENCH-CANARY-P5-EU-RECORDS-001",
+    "split": "public"
 }
