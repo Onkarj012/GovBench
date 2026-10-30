@@ -180,7 +180,7 @@ export function humanize(key: string): string {
 
 /** Formats a 0 to 1 rate as a whole percent, or a dash when there is no value. */
 export function pct(rate: number | null): string {
-  return rate === null ? "—" : `${Math.round(rate * 100)}%`;
+  return rate === null ? "—" : `${(rate * 100).toFixed(2)}%`;
 }
 
 /** Formats an ISO timestamp in IST. */
