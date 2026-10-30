@@ -503,6 +503,7 @@ def verify_element_with_judge(
     pillar: str,
     db_config: DbConfig | None = None,
     client: OpenRouterClient | None = None,
+    model_alias: str | None = None,
 ) -> tuple[bool, str]:
     """Binary element-presence check via the judge ensemble.
 
@@ -513,7 +514,7 @@ def verify_element_with_judge(
     this element check; otherwise a client is created on first need and
     closed before returning.
     """
-    judges = _select_judges(None)  # no model_alias for element checks
+    judges = _select_judges(model_alias)
 
     conn = None
     if db_config is not None:
@@ -544,7 +545,7 @@ def verify_element_with_judge(
                 vote = float(cached["score"]) >= 0.5
                 present_votes.append(vote)
                 if vote and not evidence_present:
-                    evidence_present = str(cached.get("reasoning") or "")
+                    evidence_present = str(cached["reasoning"] or "")
                 continue
 
             # Live API call
@@ -652,6 +653,8 @@ def score_response_rubric(
     pillar: str,
     db_config: DbConfig | None = None,
     run_id: str | None = None,
+    response_id: str | None = None,
+    model_alias: str | None = None,
     client: OpenRouterClient | None = None,
 ) -> JudgeVerdict:
     """Score a model response against its scenario's rubric.
@@ -683,6 +686,7 @@ def score_response_rubric(
             pillar=pillar,
             db_config=db_config,
             client=client,
+            model_alias=model_alias,
         )
 
     rubric_score = score_against_rubric(
@@ -703,6 +707,7 @@ def score_response_rubric(
                     conn,
                     run_id=run_id,
                     scenario_id=scenario_id,
+                    response_id=response_id,
                     element_id=ev.element_id,
                     present=ev.present,
                     evidence=ev.evidence,

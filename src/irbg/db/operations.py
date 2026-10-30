@@ -582,6 +582,7 @@ def insert_element_verdict(
     *,
     run_id: str,
     scenario_id: str,
+    response_id: str | None = None,
     element_id: str,
     present: bool,
     evidence: str,
@@ -594,17 +595,23 @@ def insert_element_verdict(
             id,
             run_id,
             scenario_id,
+            response_id,
             element_id,
             present,
             evidence,
             created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(response_id, element_id) WHERE response_id IS NOT NULL
+        DO UPDATE SET present = excluded.present,
+                      evidence = excluded.evidence,
+                      created_at = excluded.created_at;
         """,
         (
             verdict_id,
             run_id,
             scenario_id,
+            response_id,
             element_id,
             1 if present else 0,
             evidence,

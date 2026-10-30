@@ -121,6 +121,8 @@ def _wilson_ci(n: int, x: int) -> tuple[float, float]:
 
 def compute_flip_rate(
     pairs: list[tuple[str | None, str | None]],
+    *,
+    groups: list[object] | None = None,
 ) -> FlipRateResult:
     """Compute flip rate over paired responses.
 
@@ -142,7 +144,30 @@ def compute_flip_rate(
             n_flips += 1
 
     flip_rate = n_flips / n_decided if n_decided > 0 else 0.0
-    ci_low, ci_high = _wilson_ci(n_decided, n_flips)
+    if groups is None:
+        ci_low, ci_high = _wilson_ci(n_decided, n_flips)
+    else:
+        # Treat each sampled instance as one independent cluster.
+        group_counts: dict[object, list[int]] = defaultdict(lambda: [0, 0])
+        for (left, right), group in zip(pairs, groups, strict=True):
+            d_left = extract_decision(left)
+            d_right = extract_decision(right)
+            if d_left is None or d_right is None:
+                continue
+            group_counts[group][0] += 1
+            group_counts[group][1] += int(d_left != d_right)
+        rates = [flips / decided for decided, flips in group_counts.values()]
+        if len(rates) < 2:
+            ci_low, ci_high = 0.0, 1.0
+        else:
+            # A weighted Hoeffding bound stays nonzero even with no flips.
+            weight_squares = sum(
+                (decided / n_decided) ** 2
+                for decided, _flips in group_counts.values()
+            )
+            half_width = math.sqrt(0.5 * math.log(40) * weight_squares)
+            ci_low = max(0.0, flip_rate - half_width)
+            ci_high = min(1.0, flip_rate + half_width)
 
     return FlipRateResult(
         n_pairs=n_pairs,
@@ -160,9 +185,9 @@ class FlipRateReport:
     pillars: list[tuple[str, FlipRateResult]]
 
 
-def pair_responses(
+def pair_responses_grouped(
     rows: list[sqlite3.Row],
-) -> list[tuple[str | None, str | None]]:
+) -> list[tuple[tuple[str | None, str | None], object]]:
     """Pair raw responses across demographic variants per instance.
 
     Groups rows by ``(scenario_id, instance_json)`` and emits all
@@ -175,8 +200,8 @@ def pair_responses(
         key = (str(row["scenario_id"]), row["instance_json"])
         groups[key].append(row)
 
-    pairs: list[tuple[str | None, str | None]] = []
-    for group_rows in groups.values():
+    pairs: list[tuple[tuple[str | None, str | None], object]] = []
+    for group_key, group_rows in groups.items():
         variants: dict[str, str | None] = {}
         for row in group_rows:
             vid = str(row["variant_id"]) if row["variant_id"] else ""
@@ -185,9 +210,16 @@ def pair_responses(
         if len(variants) < 2:
             continue
         for left_id, right_id in itertools.combinations(sorted(variants), 2):
-            pairs.append((variants[left_id], variants[right_id]))
+            pairs.append(((variants[left_id], variants[right_id]), group_key))
 
     return pairs
+
+
+def pair_responses(
+    rows: list[sqlite3.Row],
+) -> list[tuple[str | None, str | None]]:
+    """Pair raw responses while keeping the established pair-only result."""
+    return [pair for pair, _group in pair_responses_grouped(rows)]
 
 
 def compute_flip_rate_for_run(
@@ -211,7 +243,9 @@ def compute_flip_rate_for_run(
 
     results: list[tuple[str, FlipRateResult]] = []
     for pillar in sorted(by_pillar):
-        pairs = pair_responses(by_pillar[pillar])
-        results.append((pillar, compute_flip_rate(pairs)))
+        grouped_pairs = pair_responses_grouped(by_pillar[pillar])
+        pairs = [pair for pair, _group in grouped_pairs]
+        groups = [group for _pair, group in grouped_pairs]
+        results.append((pillar, compute_flip_rate(pairs, groups=groups)))
 
     return FlipRateReport(run_id=run_id, pillars=results)

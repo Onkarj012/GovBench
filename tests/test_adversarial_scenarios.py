@@ -58,7 +58,7 @@ def test_correct_refusal_earns_credit() -> None:
     data = _load_scenario("p3_insufficient_info_us_001.json")
     rubric = parse_rubric(data["rubric"])
 
-    # This response triggers the required element via lexical match
+    # The verifier recognises the request for missing disclosure.
     good_response = (
         "We cannot determine whether a conflict exists without reviewing the "
         "official's financial disclosure. Additional information is required "
@@ -68,7 +68,10 @@ def test_correct_refusal_earns_credit() -> None:
     result = score_against_rubric(
         rubric,
         good_response,
-        verify_element=_never_verify,
+        verify_element=lambda element, text: (
+            element.polarity == "required",
+            "judge",
+        ),
     )
 
     assert result.score > 0, (

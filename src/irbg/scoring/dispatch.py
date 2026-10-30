@@ -53,6 +53,7 @@ def score_scenario_response(
     model_alias: str | None = None,
     db_path: Path | None = None,
     run_id: str | None = None,
+    response_id: str | None = None,
     client: OpenRouterClient | None = None,
 ) -> JudgeVerdict | None:
     """Return a rubric-based verdict when one exists, otherwise ``None``.
@@ -86,6 +87,8 @@ def score_scenario_response(
             pillar=pillar,
             db_config=db_config,
             run_id=run_id,
+            response_id=response_id,
+            model_alias=model_alias,
             client=client,
         )
     except JudgeScoringError:

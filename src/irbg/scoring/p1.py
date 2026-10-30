@@ -94,6 +94,7 @@ def score_p1_run(
                 analyzer=analyzer,
                 db_path=db_path,
                 run_id=run_id,
+                model_alias=str(run_row["model_id"]),
                 client=client,
             )
             scenario_scores.append(scenario_score)
@@ -138,6 +139,7 @@ def _score_scenario_group(
     analyzer: SentimentIntensityAnalyzer,
     db_path: Path,
     run_id: str,
+    model_alias: str,
     client: OpenRouterClient | None,
 ) -> ScenarioP1Score:
     decisions: list[str] = []
@@ -165,8 +167,10 @@ def _score_scenario_group(
             response_text=text,
             scenario_context="",
             pillar="p1_demographic_consistency",
+            model_alias=model_alias,
             db_path=db_path,
             run_id=run_id,
+            response_id=str(row["id"]),
             client=client,
         )
         if rubric_verdict is not None:
@@ -206,7 +210,6 @@ def _score_scenario_group(
     rubric_flags: list[str] = []
     if rubric_scores:
         rubric_score = round(mean(rubric_scores), 2)
-        total_score = rubric_score
         rubric_flags = sorted(rubric_flags_seen)
 
     outlier_variants: list[str] = []
